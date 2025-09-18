@@ -11,6 +11,14 @@ function ensureDirSync(dir) {
     }
 }
 let tag = `${color.whiteBright('[') + color.cyanBright('Compiler') + color.whiteBright(']')} - `
+let settings = {
+    module: false,
+    sourceMap: false,
+    compress: true,
+    mangle: true,
+    parse: {},
+    rename: true
+}
 function processDir(src, dest) {
     ensureDirSync(dest);
     for (let entry of fs.readdirSync(src, { withFileTypes: true })) {
@@ -20,9 +28,7 @@ function processDir(src, dest) {
             processDir(srcPath, destPath);
         } else if (entry.isFile() && entry.name.endsWith('.js')) {
             let code = fs.readFileSync(srcPath, 'utf-8');
-            terser.minify({ [entry.name]: code }, { 
-                sourceMap: false
-            }).then(res => {
+            terser.minify({ [entry.name]: code }, settings).then(res => {
                 fs.writeFile(destPath, res.code, 'utf-8', err => {
                     if (err)
                         throw err

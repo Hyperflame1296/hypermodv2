@@ -607,5 +607,5 @@ class Player extends EventEmitter {
 if (typeof module !== 'undefined') {
     module.exports = Player
 } else {
-    this.Player = Player
+    globalThis.Player = Player
 }

@@ -134,3 +134,7 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+
+# hmv2 stuff
+package.json
+package-lock.json

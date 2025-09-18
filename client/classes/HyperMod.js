@@ -320,5 +320,5 @@ class HyperMod {
 if (typeof module !== 'undefined') {
     module.exports = HyperMod
 } else {
-    this.HyperMod = HyperMod
+    globalThis.HyperMod = HyperMod
 }

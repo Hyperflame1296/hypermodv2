@@ -44,5 +44,5 @@ class NPSTracker {
 if (typeof module !== 'undefined') {
     module.exports = NPSTracker;
 } else {
-    this.NPSTracker = NPSTracker;
+    globalThis.NPSTracker = NPSTracker;
 }

@@ -124,5 +124,5 @@ class NoteQuota {
 if (typeof module !== 'undefined') {
     module.exports = NoteQuota
 } else {
-    this.NoteQuota = NoteQuota
+    globalThis.NoteQuota = NoteQuota
 }

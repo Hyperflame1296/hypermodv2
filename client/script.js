@@ -2326,83 +2326,79 @@ $(function() {
     // Notification class
 
     ////////////////////////////////////////////////////////////////
+    class Notification extends EventEmitter {
+        constructor(par) {
+            super()
+            if (this instanceof Notification === false) throw 'yeet'
 
-    var Notification = function (par) {
-        if (this instanceof Notification === false) throw 'yeet'
-        EventEmitter.call(this)
+            var par = par || {}
 
-        var par = par || {}
+            this.id = 'Notification-' + (par.id || Math.random())
+            this.title = par.title || ''
+            this.text = par.text || ''
+            this.html = par.html || ''
+            this.target = $(par.target || '#piano')
+            this.duration = par.duration || 30000
+            this['class'] = par['class'] || 'classic'
 
-        this.id = 'Notification-' + (par.id || Math.random())
-        this.title = par.title || ''
-        this.text = par.text || ''
-        this.html = par.html || ''
-        this.target = $(par.target || '#piano')
-        this.duration = par.duration || 30000
-        this['class'] = par['class'] || 'classic'
+            var self = this
+            var eles = $('#' + this.id)
+            if (eles.length > 0) {
+                eles.remove()
+            }
+            this.domElement = $(
+                '<div class="notification"><div class="notification-body"><div class="title"></div>' +
+                    '<div class="text"></div></div><div class="x" translated>X</div></div>'
+            )
+            this.domElement[0].id = this.id
+            this.domElement.addClass(this['class'])
+            this.domElement.find('.title').text(this.title)
+            if (this.text.length > 0) {
+                this.domElement.find('.text').text(this.text)
+            } else if (this.html instanceof HTMLElement) {
+                this.domElement.find('.text')[0].appendChild(this.html)
+            } else if (this.html.length > 0) {
+                this.domElement.find('.text').html(this.html)
+            }
+            document.body.appendChild(this.domElement.get(0))
 
-        var self = this
-        var eles = $('#' + this.id)
-        if (eles.length > 0) {
-            eles.remove()
-        }
-        this.domElement = $(
-            '<div class="notification"><div class="notification-body"><div class="title"></div>' +
-                '<div class="text"></div></div><div class="x" translated>X</div></div>'
-        )
-        this.domElement[0].id = this.id
-        this.domElement.addClass(this['class'])
-        this.domElement.find('.title').text(this.title)
-        if (this.text.length > 0) {
-            this.domElement.find('.text').text(this.text)
-        } else if (this.html instanceof HTMLElement) {
-            this.domElement.find('.text')[0].appendChild(this.html)
-        } else if (this.html.length > 0) {
-            this.domElement.find('.text').html(this.html)
-        }
-        document.body.appendChild(this.domElement.get(0))
+            this.position()
+            this.onresize = function () {
+                self.position()
+            }
+            window.addEventListener('resize', this.onresize)
 
-        this.position()
-        this.onresize = function () {
-            self.position()
-        }
-        window.addEventListener('resize', this.onresize)
-
-        this.domElement.find('.x').click(function () {
-            self.close()
-        })
-
-        if (this.duration > 0) {
-            setTimeout(function () {
+            this.domElement.find('.x').click(function () {
                 self.close()
-            }, this.duration)
+            })
+
+            if (this.duration > 0) {
+                setTimeout(function () {
+                    self.close()
+                }, this.duration)
+            }
+
+            return this
+        }
+        position() {
+            var pos = this.target.offset()
+            var x = pos.left - this.domElement.width() / 2 + this.target.width() / 4
+            var y = pos.top - this.domElement.height() - 8
+            var width = this.domElement.width()
+            if (x + width > $('body').width()) {
+                x -= x + width - $('body').width()
+            }
+            if (x < 0) x = 0
+            this.domElement.offset({ left: x, top: y })
         }
 
-        return this
-    }
-
-    mixin(Notification.prototype, EventEmitter.prototype)
-    Notification.prototype.constructor = Notification
-
-    Notification.prototype.position = function () {
-        var pos = this.target.offset()
-        var x = pos.left - this.domElement.width() / 2 + this.target.width() / 4
-        var y = pos.top - this.domElement.height() - 8
-        var width = this.domElement.width()
-        if (x + width > $('body').width()) {
-            x -= x + width - $('body').width()
+        close() {
+            window.removeEventListener('resize', this.onresize)
+            this.domElement.fadeOut(500, () => {
+                this.domElement.remove()
+                this.emit('close')
+            })
         }
-        if (x < 0) x = 0
-        this.domElement.offset({ left: x, top: y })
-    }
-
-    Notification.prototype.close = function () {
-        var self = this
-        window.removeEventListener('resize', this.onresize)
-        this.domElement.fadeOut(500, function () {
-            self.domElement.remove()
-            self.emit('close')
-        })
     }
 
     // set variables from settings or set settings
@@ -3579,7 +3575,7 @@ $(function() {
                                 })
                                 if (gMidiVolumeTest) {
                                     var knob = document.createElement('canvas')
-                                    mixin(knob, {
+                                    Object.assign(knob, {
                                         width: 16 * window.devicePixelRatio,
                                         height: 16 * window.devicePixelRatio,
                                         className: 'knob'
@@ -3633,7 +3629,7 @@ $(function() {
                                 })
                                 if (gMidiVolumeTest) {
                                     var knob = document.createElement('canvas')
-                                    mixin(knob, {
+                                    Object.assign(knob, {
                                         width: 16 * window.devicePixelRatio,
                                         height: 16 * window.devicePixelRatio,
                                         className: 'knob'
@@ -3838,7 +3834,7 @@ $(function() {
             // on/off button
             ;(function () {
                 var button = document.createElement('input')
-                mixin(button, {
+                Object.assign(button, {
                     type: 'button',
                     value: window.i18nextify.i18next.t('ON/OFF'),
                     className: enableSynth ? 'switched-on' : 'switched-off'
@@ -3863,7 +3859,7 @@ $(function() {
 
             // mix
             var knob = document.createElement('canvas')
-            mixin(knob, {
+            Object.assign(knob, {
                 width: 32 * window.devicePixelRatio,
                 height: 32 * window.devicePixelRatio,
                 className: 'knob'
@@ -3883,7 +3879,7 @@ $(function() {
             ;(function () {
                 osc1_type = osc_types[osc_type_index]
                 var button = document.createElement('input')
-                mixin(button, {
+                Object.assign(button, {
                     type: 'button',
                     value: window.i18nextify.i18next.t(osc_types[osc_type_index])
                 })
@@ -3897,7 +3893,7 @@ $(function() {
 
             // osc1 attack
             var knob = document.createElement('canvas')
-            mixin(knob, {
+            Object.assign(knob, {
                 width: 32 * window.devicePixelRatio,
                 height: 32 * window.devicePixelRatio,
                 className: 'knob'
@@ -3913,7 +3909,7 @@ $(function() {
 
             // osc1 decay
             var knob = document.createElement('canvas')
-            mixin(knob, {
+            Object.assign(knob, {
                 width: 32 * window.devicePixelRatio,
                 height: 32 * window.devicePixelRatio,
                 className: 'knob'
@@ -3928,7 +3924,7 @@ $(function() {
             knob.emit('change', knob)
 
             var knob = document.createElement('canvas')
-            mixin(knob, {
+            Object.assign(knob, {
                 width: 32 * window.devicePixelRatio,
                 height: 32 * window.devicePixelRatio,
                 className: 'knob'
@@ -3944,7 +3940,7 @@ $(function() {
 
             // osc1 release
             var knob = document.createElement('canvas')
-            mixin(knob, {
+            Object.assign(knob, {
                 width: 32 * window.devicePixelRatio,
                 height: 32 * window.devicePixelRatio,
                 className: 'knob'

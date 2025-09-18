@@ -1038,5 +1038,5 @@ Color.addToMap('#39A78E', 'Zomp')
 if (typeof module !== 'undefined') {
     module.exports = Color
 } else {
-    this.Color = Color
+    globalThis.Color = Color
 }

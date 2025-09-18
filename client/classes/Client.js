@@ -373,4 +373,8 @@ class Client extends EventEmitter {
         this.loginInfo = loginInfo
     }
 }
-this.Client = Client
+if (typeof module !== 'undefined') {
+    module.exports = Client
+} else {
+    globalThis.Client = Client
+}
