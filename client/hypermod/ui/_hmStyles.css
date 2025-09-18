@@ -1,0 +1,130 @@
+div.hypermod#hypermod-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    pointer-events: none;
+    z-index: 1000000000;
+}
+div.hypermod#main-menu {
+    position: fixed;
+    top: 12.5%;
+    left: 12.5%;
+    width: 75%;
+    height: 75%;
+    background-color: #303030;
+    border: 4px solid #202020;
+    z-index: 2000000000;
+    pointer-events: all;
+}
+div.hypermod#tabs {
+    display: flex;
+    gap: 8px;
+    height: 50px;
+    align-items: center;
+    position: relative;
+    top: -25px;
+}
+div.hypermod#tabs div.hypermod {
+    position: relative;
+    width: 200px;
+    height: 50px;
+    background-color: #303030;
+    border: 4px solid #202020;
+    box-sizing: border-box;
+    text-align: center;
+    line-height: 42px;
+    cursor: pointer;
+    transition: background-color 0.3s, border 0.3s, top 0.3s;
+}
+div.hypermod#tabs div.hypermod:hover {
+    background-color: #404040;
+    border: 4px solid #303030;
+    top: -5px;
+}
+div.hypermod#tabs div.hypermod.active {
+    background-color: #404040;
+    border: 4px solid #303030;
+    top: -12.5px;
+}
+div.hypermod#tab-content {
+    margin-left: 10px;
+    width: 100%;
+    height: 100%;
+}
+div.hypermod#tab-content div.hypermod.hm-section {
+    width: 100%;
+    height: 100%;
+    display: none;
+}
+div.hypermod#tab-content div.hypermod.hm-section.active {
+    display: block;
+}
+div.hypermod#buttons {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+div.hypermod#buttons div.hypermod.hm-button {
+    background-color: #050505;
+    border: 3px solid #000;
+    text-align: center;
+    transition: background-color 0.3s, border 0.3s;
+    display: block;
+    width: fit-content;
+    pointer-events: all;
+}
+div.hypermod#buttons div.hypermod.hm-button.inactive {
+    display: none
+}
+div.hypermod#buttons div.hypermod.hm-button:hover {
+    background-color: #808080;
+    border: 3px solid #505050;
+    cursor: pointer;
+}
+/* specified buttons */
+div.hypermod#buttons div.hypermod.hm-button#apply-button {
+    position: absolute;
+    width: 100px;
+    height: 40px;
+    top: calc(100% - 42px);
+    left: calc(100% - 103px);
+}
+div.hypermod#buttons div.hypermod.hm-button#exit-button {
+    position: absolute;
+    width: 40px;
+    height: 40px;
+    top: -3px;
+    left: calc(100% - 42px);
+}
+div.hypermod#buttons div.hypermod.hm-button#exit-button:hover {
+    background-color: #ca0000;
+    border: 3px solid #9c0000;
+}
+div.hypermod.indent * {
+    position: relative;
+    left: 30px;
+}
+input.hypermod.hm-checkbox {
+    width: 20px;
+    height: 20px;
+}
+input.hypermod.hm-slider {
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    background-image: -webkit-gradient(linear, left top, right top, color-stop(0, hsla(254, 100%, 25%, 0.8)), color-stop(1, hsl(200, 80%, 45%))) !important;
+    -webkit-background-clip: unset !important;
+    background-clip: unset !important;
+}
+canvas.hypermod {
+    z-index: 1000000000;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}

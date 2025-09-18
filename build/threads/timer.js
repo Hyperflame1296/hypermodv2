@@ -1,0 +1,1 @@
+self.onmessage=a=>{setTimeout(()=>{postMessage({args:a.data.args})},a.data.delay)};
