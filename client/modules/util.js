@@ -1,5 +1,7 @@
 /** @format */
-
+const GeneratorFunction = Object.getPrototypeOf(function*(){}).constructor
+const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor
+const AsyncGeneratorFunction = Object.getPrototypeOf(async function*(){}).constructor
 var parseContent = (text) =>
     text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;')
 
@@ -365,6 +367,9 @@ var url_regex = new RegExp(
 Object.assign(globalThis, {
     EventEmitter,
     Knob,
+    GeneratorFunction,
+    AsyncFunction,
+    AsyncGeneratorFunction,
     parseMarkdown,
     parseContent,
     parseUrl

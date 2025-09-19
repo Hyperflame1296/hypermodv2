@@ -23,6 +23,12 @@
                 <label for='track-nps-switch'>Track NPS:</label>
                 <input class='hypermod hm-checkbox' type='checkbox' data-setting='trackNPS' id='track-nps-switch'>
             </div>
+            <div class='hypermod' id='ws-url-input-c' title='The MPP server to connect to.'>
+                <label for='ws-url-input'>WebSocket URL:</label>
+                <input class='hypermod hm-input' type='text' data-setting='connectUrl' id='ws-url-input'>
+                <div class='hypermod hm-button' id='reset-url-button'>Reset URL</div>
+            </div>
+            <div class='hypermod hm-button' id='reconnect-button'>Reconnect</div>
         </div>
         <div class='hypermod hm-section' id='player-tab-content'>
             <div class='hypermod' id='enable-client-side-playback-switch-c' title='MIDI playback will only be heard on your end.'>

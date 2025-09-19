@@ -2,11 +2,17 @@
 
 WebSocket.prototype.send = new Proxy(WebSocket.prototype.send, {
     apply: (target, thisArg, args) => {
+        if (typeof args[0] !== 'string') return target.apply(thisArg, args)
         if (localStorage.token && !args[0].startsWith(`[{"m":"hi"`)) args[0] = args[0].replace(localStorage.token, '[REDACTED]')
         return target.apply(thisArg, args)
     }
 })
-
+let hiDB = [
+    new URL('wss://mpp.lapishusky.dev')
+]
+let binDB = [
+    new URL('wss://mpp.lapishusky.dev')
+]
 class Client extends EventEmitter {
     constructor(uri) {
         if (window.MPP && MPP.client) {
@@ -15,7 +21,7 @@ class Client extends EventEmitter {
             )
         }
         super()
-
+        this.translator = new BinaryTranslator()
         this.uri = uri
         this.ws = undefined
         this.serverTimeOffset = 0
@@ -61,6 +67,7 @@ class Client extends EventEmitter {
     }
     connect() {
         if (!this.canConnect || !this.isSupported() || this.isConnected() || this.isConnecting()) return
+        let uri = new URL(this.uri)
         this.emit('status', 'Connecting...')
         if (typeof module !== 'undefined') {
             // nodejsicle
@@ -71,118 +78,134 @@ class Client extends EventEmitter {
             // browseroni
             this.ws = new WebSocket(this.uri)
         }
-        var self = this
-        this.ws.addEventListener('close', function (evt) {
-            self.user = undefined
-            self.participantId = undefined
-            self.channel = undefined
-            self.setParticipants([])
-            clearInterval(self.pingInterval)
-            clearInterval(self.noteFlushInterval)
-
-            self.emit('disconnect', evt)
-            self.emit('status', 'Offline mode')
+        if (binDB.find(u => u.host === uri.host)) {
+            this.ws.binaryType = 'arraybuffer'
+        }
+        this.ws.addEventListener('close', e => {
+            this.translator.reset()
+            this.user = undefined
+            this.participantId = undefined
+            this.channel = undefined
+            this.setParticipants([])
+            clearInterval(this.pingInterval)
+            clearInterval(this.noteFlushInterval)
+            this.emit('disconnect', e)
+            this.emit('status', 'Offline mode')
 
             // reconnect!
-            if (self.connectionTime) {
-                self.connectionTime = undefined
-                self.connectionAttempts = 0
+            if (this.connectionTime) {
+                this.connectionTime = undefined
+                this.connectionAttempts = 0
             } else {
-                ++self.connectionAttempts
+                ++this.connectionAttempts
             }
             var ms_lut = [50, 2500, 10000]
-            var idx = self.connectionAttempts
+            var idx = this.connectionAttempts
             if (idx >= ms_lut.length) idx = ms_lut.length - 1
             var ms = ms_lut[idx]
-            setTimeout(self.connect.bind(self), ms)
+            setTimeout(this.connect.bind(this), ms)
         })
-        this.ws.addEventListener('error', function (err) {
-            self.emit('wserror', err)
-            self.ws.close() // self.ws.emit("close");
+        this.ws.addEventListener('error', e => {
+            this.emit('wserror', e)
+            this.ws.close() // this.ws.emit("close");
         })
-        this.ws.addEventListener('open', function (evt) {
-            self.pingInterval = setInterval(function () {
-                self.sendPing()
-            }, 20000)
-            self.noteBuffer = []
-            self.noteBufferTime = 0
-            self.noteFlushInterval = setInterval(function () {
-                if (self.noteBufferTime && self.noteBuffer.length > 0) {
-                    self.sendArray([
+        this.ws.addEventListener('open', e => {
+            this.connectionTime = Date.now()
+            if (hiDB.find(u => u.host === uri.host)) {
+                this.sendArray([
+                    {
+                        m: 'hi', 
+                        '🐈': this['🐈']++ || undefined 
+                    }
+                ]);
+            }
+            this.pingInterval = setInterval(this.sendPing.bind(this), 20000)
+            this.noteBuffer = []
+            this.noteBufferTime = 0
+            this.noteFlushInterval = setInterval((() => {
+                if (this.noteBufferTime && this.noteBuffer.length > 0) {
+                    this.sendArray([
                         {
                             m: 'n',
-                            t: self.noteBufferTime + self.serverTimeOffset,
-                            n: self.noteBuffer
+                            t: this.noteBufferTime + this.serverTimeOffset,
+                            n: this.noteBuffer
                         }
                     ])
-                    self.noteBufferTime = 0
-                    self.noteBuffer = []
+                    this.noteBufferTime = 0
+                    this.noteBuffer = []
                 }
-            }, 200)
+            }).bind(this), 200)
 
-            self.emit('connect')
-            self.emit('status', 'Joining channel...')
+            this.emit('connect')
+            this.emit('status', 'Joining channel...')
         })
-        this.ws.addEventListener('message', async function (evt) {
-            var transmission = JSON.parse(evt.data)
+        this.ws.addEventListener('message', async e => {
+            var transmission = this.ws.binaryType === 'arraybuffer' ? this.translator.receive(e.data) : JSON.parse(e.data)
             for (var i = 0; i < transmission.length; i++) {
                 var msg = transmission[i]
-                self.emit(msg.m, msg)
+                this.emit(msg.m, msg)
             }
         })
     }
     bindEventListeners() {
-        var self = this
-        this.on('hi', function (msg) {
-            self.connectionTime = Date.now()
-            self.user = msg.u
-            self.receiveServerTime(msg.t, msg.e || undefined)
-            if (self.desiredChannelId) {
-                self.setChannel()
-            }
-            if (msg.token) localStorage.token = msg.token
-            if (msg.permissions) {
-                self.permissions = msg.permissions
+        let uri = new URL(this.uri)
+        this.on('hi', msg => {
+            if (hiDB.find(u => u.host === uri.host)) {
+                this.connectionTime = Date.now()
+                this.user = msg.u;
+                this.receiveServerTime(msg.t, msg.e || undefined);
+                if (this.desiredChannelId) {
+                    this.setChannel();
+                }
+                if (msg.token) localStorage.token = msg.token
             } else {
-                self.permissions = {}
+                this.connectionTime = Date.now()
+                this.user = msg.u
+                this.receiveServerTime(msg.t, msg.e || undefined)
+                if (this.desiredChannelId) {
+                    this.setChannel()
+                }
+                if (msg.token) localStorage.token = msg.token
+                if (msg.permissions) {
+                    this.permissions = msg.permissions
+                } else {
+                    this.permissions = {}
+                }
+                if (msg.accountInfo) {
+                    this.accountInfo = msg.accountInfo
+                } else {
+                    this.accountInfo = undefined
+                }
+            }   
+        })
+        this.on('t', msg => {
+            this.receiveServerTime(msg.t, msg.e || undefined)
+        })
+        this.on('ch', msg => {
+            this.desiredChannelId = msg.ch._id
+            this.desiredChannelSettings = msg.ch.settings
+            this.channel = msg.ch
+            if (msg.p) this.participantId = msg.p
+            this.setParticipants(msg.ppl)
+        })
+        this.on('p', msg => {
+            this.participantUpdate(msg)
+            this.emit('participant update', this.findParticipantById(msg.id))
+        })
+        this.on('m', msg => {
+            if (this.ppl.hasOwnProperty(msg.id)) {
+                this.participantMoveMouse(msg)
             }
-            if (msg.accountInfo) {
-                self.accountInfo = msg.accountInfo
-            } else {
-                self.accountInfo = undefined
-            }
         })
-        this.on('t', function (msg) {
-            self.receiveServerTime(msg.t, msg.e || undefined)
+        this.on('bye', msg => {
+            this.removeParticipant(msg.p)
         })
-        this.on('ch', function (msg) {
-            self.desiredChannelId = msg.ch._id
-            self.desiredChannelSettings = msg.ch.settings
-            self.channel = msg.ch
-            if (msg.p) self.participantId = msg.p
-            self.setParticipants(msg.ppl)
-        })
-        this.on('p', function(msg) {
-            self.participantUpdate(msg)
-            self.emit('participant update', self.findParticipantById(msg.id))
-        })
-        this.on('m', function(msg) {
-            if (self.ppl.hasOwnProperty(msg.id)) {
-                self.participantMoveMouse(msg)
-            }
-        })
-        this.on('bye', function(msg) {
-            self.removeParticipant(msg.p)
-        })
-        this.on('b', async function(msg) {
+        this.on('b', async msg => {
             var hiMsg = { m: 'hi' }
             hiMsg['🐈'] = self['🐈']++ || undefined
             if (this.loginInfo) hiMsg.login = this.loginInfo
             this.loginInfo = undefined
-            // adding commit: "fix: support Async antibots"
-            const AsyncFunction = Object.getPrototypeOf(
-                async function() {},                     
-            ).constructor                                
+            // adding commit: "fix: support Async antibots"                          
             try {
                 if (msg.code.startsWith('~')) {
                     hiMsg.code = await AsyncFunction(msg.code.substring(1))()
@@ -195,14 +218,14 @@ class Client extends EventEmitter {
             if (localStorage.token) {
                 hiMsg.token = localStorage.token
             }
-            self.sendArray([hiMsg])
+            this.sendArray([hiMsg])
         })
     }
     send(raw) {
         if (this.isConnected()) this.ws.send(raw)
     }
     sendArray(arr) {
-        this.send(JSON.stringify(arr))
+        this.isConnected() && this.ws.binaryType === 'arraybuffer' ? this.send(this.translator.send(arr)) : this.send(JSON.stringify(arr))
     }
     setChannel(id, set) {
         this.desiredChannelId = id || this.desiredChannelId || 'lobby'
@@ -309,7 +332,6 @@ class Client extends EventEmitter {
         )
     }
     receiveServerTime(time, echo) {
-        var self = this
         var now = Date.now()
         var target = time - now
         // console.log("Target serverTimeOffset: " + target);
@@ -320,14 +342,14 @@ class Client extends EventEmitter {
         var difference = target - this.serverTimeOffset
         var inc = difference / steps
         var iv
-        iv = setInterval(function () {
-            self.serverTimeOffset += inc
+        iv = setInterval((() => {
+            this.serverTimeOffset += inc
             if (++step >= steps) {
                 clearInterval(iv)
-                // console.log("serverTimeOffset reached: " + self.serverTimeOffset);
-                self.serverTimeOffset = target
+                // console.log("serverTimeOffset reached: " + this.serverTimeOffset);
+                this.serverTimeOffset = target
             }
-        }, step_ms)
+        }).bind(this), step_ms)
         // smoothen
 
         // this.serverTimeOffset = time - now;            // mostly time zone offset ... also the lags so todo smoothen this

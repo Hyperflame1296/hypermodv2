@@ -5,7 +5,7 @@
 // - James
 
 // tensive - recoding it to work for web clients
-function readUintBE(view, offset, byteLength) {
+function r(view, offset, byteLength) {
 	let value = 0;
 	for (let i = 0; i < byteLength; i++) {
 		value = (value << 8) | view.getUint8(offset + i);
@@ -122,7 +122,7 @@ self.onmessage = workerData => {
 										ignore = true; // malformed
 									} else {
 										
-										const uspq = readUintBE(view, offset, 3);
+										const uspq = r(view, offset, 3);
 										tempoEvents.push({ tick: currentTick, uspq: uspq });
 										eventCode = EVENT_CODE.SET_TEMPO;
 										p1 = (uspq >> 16) & 0xFF;
@@ -194,7 +194,7 @@ self.onmessage = workerData => {
 		}
 		postMessage({ m: 'exit', code: 0 })
 	} catch (err) {
-		postMessage({ m: 'error', error: `${err.message}\n    ${err.stack}`})
+		postMessage({ m: 'error', error: `${err.message}\n${err.stack}`})
 		postMessage({ m: 'exit', code: 1 })
 	}
 }
