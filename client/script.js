@@ -34,7 +34,7 @@ $(function() {
         '%cCheck out the source code: https://github.com/mppnet/frontend/tree/main/client\nGuide for coders and bot developers: https://docs.google.com/document/d/1OrxwdLD1l1TE8iau6ToETVmnLuLXyGBhA0VfAY1Lf14/edit?usp=sharing',
         'color:gray; font-size:12px;'
     )
-
+    
     var test_mode = window.location.hash && window.location.hash.match(/^(?:#.+)*#test(?:#.+)*$/i)
 
     var gSeeOwnCursor = window.location.hash && window.location.hash.match(/^(?:#.+)*#seeowncursor(?:#.+)*$/i)
@@ -2894,6 +2894,7 @@ $(function() {
         })
         gClient.on('a', function (msg) {
             chat.receive(msg)
+            gHyperMod.receiveMessage(msg)
         })
         gClient.on('dm', function (msg) {
             chat.receive(msg)

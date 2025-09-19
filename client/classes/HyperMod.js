@@ -85,6 +85,73 @@ class HyperMod {
     frames = 0
     fps = 0
     lastTime = performance.now()
+    prefix = '$'
+    tags = {
+        log: `[HyperMod ${this.version}] - `,
+        success: `[HyperMod ${this.version}] - [✅] - `,
+        warn: `[HyperMod ${this.version}] - [⚠] - `,
+        error: `[HyperMod ${this.version}] - [❌] - `
+    }
+    commands = [
+        {
+            name: 'help',
+            description: 'Show all commands.',
+            syntax: `${this.prefix}help [command]`,
+            func: (a, msg) => {
+                let b = a[0]?.trim() ?? '',
+                    c = a[1]?.trim() ?? ''
+
+                if (c === '') {
+                    let initial = this.tags.success + 'Commands: '
+                    for (let command of this.commands) {
+                        initial += `\`${command.name}\`${this.commands.indexOf(command) + 1 === this.commands.length ? '' : ', '}`
+                    }
+                    MPP.chat.send(initial)
+                } else {
+                    MPP.chat.send('a')
+                }
+            }
+        },
+        {
+            name: 'js',
+            description: 'Evaluates JavaScript code.',
+            syntax: `${this.prefix}js [command]`,
+            func: (a, msg) => {
+                let input = a.slice(1).join(' ')
+                this.evalCode(input).then(res => {
+                    let str = 'unknown type'
+                    switch (typeof res) {
+                        case 'number':
+                        case 'function':
+                        case 'symbol':
+                            str = res.toString()
+                            break
+                        case 'bigint':
+                            str = res.toString() + 'n'
+                            break
+                        case 'string':
+                            str = res
+                            break
+                        case 'boolean':
+                            str = res ? 'true' : 'false'
+                            break
+                        case 'object':
+                            str = JSON.stringify(res)
+                            break
+                        case 'undefined':
+                            str = 'undefined'
+                            break
+                        default:
+                            str = 'unknown type'
+                            break
+                    }
+                    MPP.chat.send(`[✅] » \`${str}\``)
+                }).catch(err => {
+                    MPP.chat.send(`[❌] » \`${err}\``)
+                })
+            }
+        }
+    ]
     constructor() {
         if (typeof MPP !== 'undefined' && typeof MPP.addons?.hyperMod !== 'undefined')
             throw Error`no...`
@@ -99,13 +166,14 @@ class HyperMod {
                 return
             let note
             let ch = (e.channel ?? 0) % 16
+            let gp = MPP.client.getOwnParticipant()
             let p = this.lsSettings.enableChannelColors ? 
                 {
-                    ...MPP.client.ppl[MPP.client.participantId] ?? MPP.client.offlineParticipant,
+                    ...gp,
                     color: this.channelColors[ch]
                 }
             :
-                MPP.client.ppl[MPP.client.participantId] ?? MPP.client.offlineParticipant
+                gp
             switch (e.type) {
                 case 8: // note off
                     note = keys[e.note - 21]
@@ -135,10 +203,35 @@ class HyperMod {
         }
         loop()
     }
-    async loadMIDI(url) {
-        let file = await fetch(url)
-        let data = await file.arrayBuffer()
-        await this.player.loadArrayBuffer(data)
+    evalCode(a) {
+        return new Promise((resolve, reject) => {
+            try {
+                let res = eval(a)
+                resolve(res)
+            } catch (err) {
+                reject(err)
+            }
+        })
+    }
+    receiveMessage(msg) {
+        if (typeof MPP === 'undefined')
+            return
+
+        let a = msg.a?.trim().split(' ') ?? [],
+            b = a[0]?.trim() ?? '',
+            c = a[1]?.trim() ?? ''
+
+        if (b.startsWith(this.prefix)) {
+            try {
+                let command = this.commands.find(c => c.name === b.replace(this.prefix, ''))
+                if (!command)
+                    return MPP.chat.send(this.tags.error + `No such command \`${b}\``)
+
+                command.func(a, msg)
+            } catch (err) {
+                MPP.chat.send(this.tags.error `${err}`)
+            }
+        }
     }
     canvasUpdate() {
         this.canvas.width = innerWidth
@@ -200,6 +293,12 @@ class HyperMod {
                 this.fpsHist.shift()
             this.fpsHist.push(this.fps)
         }
+    }
+    async loadMIDI(uri) {
+        let url = new URL(uri)
+        let file = await fetch(url)
+        let data = await file.arrayBuffer()
+        await this.player.loadArrayBuffer(data)
     }
     unloadMIDI() {
         this.player.unload()
