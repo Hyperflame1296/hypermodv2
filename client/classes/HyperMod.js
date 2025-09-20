@@ -180,7 +180,7 @@ class HyperMod {
                     if (!note)
                         return
                     if (this.lsSettings.enableClientSideMIDIPlayer) {
-                        MPP.piano.stop(note, p, 0)
+                        MPP.piano.stop(note, p)
                     } else {
                         MPP.release(note)
                     }
@@ -190,7 +190,7 @@ class HyperMod {
                     if (!note)
                         return
                     if (this.lsSettings.enableClientSidePlayback) {
-                        MPP.piano.play(note, e.velocity / 127, p, 0)
+                        MPP.piano.play(note, e.velocity / 127, p)
                     } else {
                         MPP.press(note, e.velocity / 127)
                     }

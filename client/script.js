@@ -563,13 +563,6 @@ $(function() {
                 }
             }
         }
-        visualize(key, color) {
-            let limit = gHyperMod.lsSettings.blipLimit
-            key.timePlayed = Date.now()
-            if (gHyperMod.lsSettings.enableBlipLimit && key.blips.length >= limit)
-                key.blips.shift()
-            key.blips.push({ time: key.timePlayed, color: color })
-        }
         redraw() {
             var now = Date.now()
             var timeLoadedEnd = now - 1000
@@ -866,8 +859,6 @@ $(function() {
             this.domElement = null
             this.timePlayed = 0
             this.blips = []
-            this.lastHitTime = 0
-            this.lastColor = '#ffffff'
         }
     }
     class Piano {
@@ -916,18 +907,22 @@ $(function() {
             })
             return this
         }
-        play(note, vol, participant, delay_ms, lyric) {
+        play(note, vol, participant, delay_ms) {
             if (gHyperMod.lsSettings.trackNPS) gHyperMod.npsTracker.noteOn()
             if (!this.keys.hasOwnProperty(note) || !participant) return
             var key = this.keys[note]
-            key.lastHitTime = performance.now() + delay_ms
-            key.lastColor = participant.color
-            if (key.loaded && this.audio.volume > 0) this.audio.play(key.note, vol, delay_ms, participant.id)
-            if (gMidiOutTest) gMidiOutTest(key.note, vol * 100, delay_ms, participant.id)
-            setTimeout(() => {
-                this.renderer.visualize(key, participant.color)
-                if (lyric) {
-                }
+            let delay = delay_ms ?? 0
+            if (key.loaded && this.audio.volume > 0) this.audio.play(key.note, vol, delay, participant.id)
+            if (gMidiOutTest) gMidiOutTest(key.note, vol * 100, delay, participant.id)
+            // redunant, but idc
+            if (delay <= 0) {
+                // spawn a blip
+                let limit = gHyperMod.lsSettings.blipLimit
+                key.timePlayed = Date.now()
+                if (gHyperMod.lsSettings.enableBlipLimit && key.blips.length >= limit)
+                    key.blips.shift()
+                key.blips.push({ time: key.timePlayed, color: participant.color })
+                // bounce player's name, if enabled
                 if (!gHyperMod.lsSettings.removeNameBouncing) {
                     var jq_namediv = $(participant.nameDiv)
                     jq_namediv.addClass('play')
@@ -935,7 +930,23 @@ $(function() {
                         jq_namediv.removeClass('play')
                     }, 30)
                 }
-            }, delay_ms || 0)
+            } else
+                setTimeout(() => {
+                    // spawn a blip
+                    let limit = gHyperMod.lsSettings.blipLimit
+                    key.timePlayed = Date.now()
+                    if (gHyperMod.lsSettings.enableBlipLimit && key.blips.length >= limit)
+                        key.blips.shift()
+                    key.blips.push({ time: key.timePlayed, color: participant.color })
+                    // bounce player's name, if enabled
+                    if (!gHyperMod.lsSettings.removeNameBouncing) {
+                        var jq_namediv = $(participant.nameDiv)
+                        jq_namediv.addClass('play')
+                        setTimeout(function () {
+                            jq_namediv.removeClass('play')
+                        }, 30)
+                    }
+                }, delay)
         }
         stop(note, participant, delay_ms) {
             if (!this.keys.hasOwnProperty(note)) return
