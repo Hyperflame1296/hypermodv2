@@ -653,7 +653,7 @@ $(function() {
                     }
 
                     // render blips
-                    if (key.blips.length) {
+                    if (key.blips.length > 0) {
                         var alpha = 1
                         var w, h
                         if (key.sharp) {
@@ -911,11 +911,11 @@ $(function() {
             if (gHyperMod.lsSettings.trackNPS) gHyperMod.npsTracker.noteOn()
             if (!this.keys.hasOwnProperty(note) || !participant) return
             var key = this.keys[note]
-            let delay = delay_ms ?? 0
-            if (key.loaded && this.audio.volume > 0) this.audio.play(key.note, vol, delay, participant.id)
-            if (gMidiOutTest) gMidiOutTest(key.note, vol * 100, delay, participant.id)
+            delay_ms ??= 0
+            if (key.loaded && this.audio.volume > 0) this.audio.play(key.note, vol, delay_ms, participant.id)
+            if (gMidiOutTest) gMidiOutTest(key.note, vol * 100, delay_ms, participant.id)
             // redunant, but idc
-            if (delay <= 0) {
+            if (delay_ms <= 0) {
                 // spawn a blip
                 let limit = gHyperMod.lsSettings.blipLimit
                 key.timePlayed = Date.now()
@@ -946,9 +946,10 @@ $(function() {
                             jq_namediv.removeClass('play')
                         }, 30)
                     }
-                }, delay)
+                }, delay_ms)
         }
         stop(note, participant, delay_ms) {
+            delay_ms ??= 0
             if (!this.keys.hasOwnProperty(note)) return
             var key = this.keys[note]
             if (key.loaded && this.audio.volume > 0) this.audio.stop(key.note, delay_ms, participant.id)
@@ -3528,11 +3529,17 @@ $(function() {
                         note_number = note_number + 9 - MIDI_TRANSPOSE
                         var outputs = midi.outputs.values()
                         for (var output_it = outputs.next(); output_it && !output_it.done; output_it = outputs.next()) {
-                            var output = output_it.value
-                            if (output.enabled) {
-                                var v = vel
-                                if (output.volume !== undefined) v *= output.volume
-                                output.send([0x90, note_number, v], window.performance.now() + delay_ms)
+                            try {
+                                var output = output_it.value
+                                if (output.enabled) {
+                                    var v = vel
+                                    delay_ms ??= 0
+                                    if (output.volume !== undefined) v *= output.volume
+                                    output.send([0x90, note_number, v], window.performance.now() + delay_ms)
+                                }
+                            } catch (err) {
+                                console.error(err)
+                                continue
                             }
                         }
                     }

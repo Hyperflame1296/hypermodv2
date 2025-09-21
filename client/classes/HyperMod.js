@@ -179,10 +179,11 @@ class HyperMod {
                     note = keys[e.note - 21]
                     if (!note)
                         return
-                    if (this.lsSettings.enableClientSideMIDIPlayer) {
+                    if (this.lsSettings.enableClientSidePlayback) {
                         MPP.piano.stop(note, p)
                     } else {
-                        MPP.release(note)
+                        MPP.piano.stop(note, p)
+                        MPP.client.stopNote(note)
                     }
                     break
                 case 9: // note on
@@ -192,7 +193,8 @@ class HyperMod {
                     if (this.lsSettings.enableClientSidePlayback) {
                         MPP.piano.play(note, e.velocity / 127, p)
                     } else {
-                        MPP.press(note, e.velocity / 127)
+                        MPP.piano.play(note, e.velocity / 127, p)
+                        MPP.client.startNote(note, e.velocity / 127)
                     }
                     break
             }
@@ -215,6 +217,9 @@ class HyperMod {
     }
     receiveMessage(msg) {
         if (typeof MPP === 'undefined')
+            return
+
+        if (msg.p.id !== MPP.client.participantId)
             return
 
         let a = msg.a?.trim().split(' ') ?? [],
