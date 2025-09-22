@@ -209,7 +209,7 @@ $(function() {
             //the old play(), but with time insted of delay_ms.
             if (this.paused) return
             if (!this.sounds.hasOwnProperty(id)) return
-            if (this.volume <= 0) return
+            if (this.volume <= 0 || gHyperMod.lsSettings.disableAudioEngine) return
             var source = this.context.createBufferSource()
             source.buffer = this.sounds[id]
             var gain = this.context.createGain()
@@ -235,7 +235,7 @@ $(function() {
         }
         play(id, vol, delay_ms, part_id) {
             if (!this.sounds.hasOwnProperty(id)) return
-            if (this.volume <= 0) return
+            if (this.volume <= 0 || gHyperMod.lsSettings.disableAudioEngine) return
             var time = this.context.currentTime + delay_ms / 1000 //calculate time on note receive.
             var delay = delay_ms - this.threshold
             if (delay <= 0) this.actualPlay(id, vol, time, part_id)
@@ -258,7 +258,7 @@ $(function() {
             }
         }
         actualStop(id, time, part_id) {
-            if (this.volume <= 0) return
+            if (this.volume <= 0 || gHyperMod.lsSettings.disableAudioEngine) return
             if (this.playings.hasOwnProperty(id) && this.playings[id] && this.playings[id].part_id === part_id) {
                 var gain = this.playings[id].gain.gain
                 gain.setValueAtTime(gain.value, time)
@@ -274,7 +274,7 @@ $(function() {
             }
         }
         stop(id, delay_ms, part_id) {
-            if (this.volume <= 0) return
+            if (this.volume <= 0 || gHyperMod.lsSettings.disableAudioEngine) return
             var time = this.context.currentTime + delay_ms / 1000
             var delay = delay_ms - this.threshold
             if (delay <= 0) this.actualStop(id, time, part_id)
@@ -907,12 +907,100 @@ $(function() {
             })
             return this
         }
-        play(note, vol, participant, delay_ms) {
+        bufferPlay(note, vol, participant, delay_ms=0) {
+            if (gHyperMod.lsSettings.trackNPS) gHyperMod.npsTracker.noteOn();
+            if (!this.keys.hasOwnProperty(note) || !participant) return;
+            const key = this.keys[note];
+            key.lastHitTime = performance.now() + delay_ms;
+            key.lastColor = participant.color;
+            const limit = 17;
+
+            // --- Visual circular buffer ---
+            if (!key._blipBuffer) {
+                key._blipBuffer = new Array(limit).fill(null);
+                key._blipHead = 0;
+                key._blipTail = 0;
+                key._blipCount = 0;
+            }
+
+            // --- Audio immediate (play right away) ---
+            if (key.loaded && this.audio.volume > 0) this.audio.play(key.note, vol, delay_ms, participant.id);
+
+            // --- Initialize fixed-size circular buffers ---
+            if (!this._midiBuffer) this._midiBuffer = { buf: new Array(500), head: 0, tail: 0, count: 0 };
+            if (!this._blipBuffer) this._blipBuffer = { buf: new Array(1000), head: 0, tail: 0, count: 0 };
+
+            // --- Enqueue MIDI with skip if full ---
+            const midiBuf = this._midiBuffer;
+            if (midiBuf.count < midiBuf.buf.length) {
+                midiBuf.buf[midiBuf.tail] = { note: key.note, vol: vol * 100, delay: delay_ms, participantId: participant.id };
+                midiBuf.tail = (midiBuf.tail + 1) % midiBuf.buf.length;
+                midiBuf.count++;
+            }
+
+            // --- Enqueue Blip with skip if full ---
+            const blipBuf = this._blipBuffer;
+            if (blipBuf.count < blipBuf.buf.length) {
+                blipBuf.buf[blipBuf.tail] = { key, color: participant.color, participant };
+                blipBuf.tail = (blipBuf.tail + 1) % blipBuf.buf.length;
+                blipBuf.count++;
+            }
+
+            // --- Flusher loop ---
+            if (!this._flusherRunning) {
+                this._flusherRunning = true;
+
+                const flush = () => {
+                    const midiPerFrame = 125;   // flush max 50 MIDI notes per frame
+                    const blipPerFrame = 250;   // flush max 20 blips per frame
+
+                    // --- MIDI flush ---
+                    for (let i = 0; i < midiPerFrame && midiBuf.count > 0; i++) {
+                        const ev = midiBuf.buf[midiBuf.head];
+                        if (ev && gMidiOutTest) gMidiOutTest(ev.note, ev.vol, ev.delay, ev.participantId);
+                        midiBuf.head = (midiBuf.head + 1) % midiBuf.buf.length;
+                        midiBuf.count--;
+                    }
+
+                    // --- Blip flush ---
+                    for (let i = 0; i < blipPerFrame && blipBuf.count > 0; i++) {
+                        const ev = blipBuf.buf[blipBuf.head];
+                        const k = ev.key;
+                        const timeNow = Date.now();
+
+                        k._blipBuffer[k._blipTail] = { time: timeNow, color: ev.color };
+                        k._blipTail = (k._blipTail + 1) % limit;
+                        if (k._blipCount < limit) k._blipCount++;
+                        else k._blipHead = (k._blipHead + 1) % limit;
+
+                        k.blips = [];
+                        for (let j = 0; j < k._blipCount; j++)
+                            k.blips.push(k._blipBuffer[(k._blipHead + j) % limit]);
+
+                        if (!gHyperMod.lsSettings.removeNameBouncing && ev.participant.nameDiv && !ev.participant.nameDiv.__isBouncing) {
+                            const div = ev.participant.nameDiv;
+                            div.__isBouncing = true;
+                            div.classList.add("play");
+                            setTimeout(() => { div.classList.remove("play"); div.__isBouncing = false; }, 30);
+                        }
+
+                        blipBuf.head = (blipBuf.head + 1) % blipBuf.buf.length;
+                        blipBuf.count--;
+                    }
+
+                    // --- continue only if buffers not empty ---
+                    if (midiBuf.count > 0 || blipBuf.count > 0) requestAnimationFrame(flush);
+                    else this._flusherRunning = false;
+                };
+
+                requestAnimationFrame(flush);
+            }
+        }
+        play(note, vol, participant, delay_ms=0) {
             if (gHyperMod.lsSettings.trackNPS) gHyperMod.npsTracker.noteOn()
             if (!this.keys.hasOwnProperty(note) || !participant) return
             var key = this.keys[note]
-            delay_ms ??= 0
-            if (key.loaded && this.audio.volume > 0) this.audio.play(key.note, vol, delay_ms, participant.id)
+            if (key.loaded && this.audio.volume > 0 && !gHyperMod.lsSettings.disableAudioEngine) this.audio.play(key.note, vol, delay_ms, participant.id)
             if (gMidiOutTest) gMidiOutTest(key.note, vol * 100, delay_ms, participant.id)
             // redunant, but idc
             if (delay_ms <= 0) {
@@ -948,11 +1036,10 @@ $(function() {
                     }
                 }, delay_ms)
         }
-        stop(note, participant, delay_ms) {
-            delay_ms ??= 0
+        stop(note, participant, delay_ms=0) {
             if (!this.keys.hasOwnProperty(note)) return
             var key = this.keys[note]
-            if (key.loaded && this.audio.volume > 0) this.audio.stop(key.note, delay_ms, participant.id)
+            if (key.loaded && this.audio.volume > 0 && !gHyperMod.lsSettings.disableAudioEngine) this.audio.stop(key.note, delay_ms, participant.id)
             if (gMidiOutTest) gMidiOutTest(key.note, 0, delay_ms, participant.id)
         }
     }
@@ -993,8 +1080,11 @@ $(function() {
     function press(id, vol) {
         if (!gClient.preventsPlaying() && gNoteQuota.spend(1)) {
             gHeldNotes[id] = true
-            gSustainedNotes[id] = true
-            gPiano.play(id, vol !== undefined ? vol : DEFAULT_VELOCITY, gClient.getOwnParticipant(), 0)
+            gSustainedNotes[id] = true;
+            if (gHyperMod.lsSettings.enableBufferedBlips)
+                gPiano.bufferPlay(id, vol !== undefined ? vol : DEFAULT_VELOCITY, gClient.getOwnParticipant(), 0)
+            else
+                gPiano.play(id, vol !== undefined ? vol : DEFAULT_VELOCITY, gClient.getOwnParticipant(), 0)
             gClient.startNote(id, vol)
         }
     }
@@ -1462,8 +1552,11 @@ $(function() {
                 var vel = typeof note.v !== 'undefined' ? parseFloat(note.v) : DEFAULT_VELOCITY
                 if (!vel) vel = 0
                 else if (vel < 0) vel = 0
-                else if (vel > 1) vel = 1
-                gPiano.play(note.n, vel, participant, ms)
+                else if (vel > 1) vel = 1;
+                if (gHyperMod.lsSettings.enableBufferedBlips)
+                    gPiano.bufferPlay(note.n, vel, participant, ms)
+                else
+                    gPiano.play(note.n, vel, participant, ms)
                 if (enableSynth) {
                     gPiano.stop(note.n, participant, ms + 1000)
                 }

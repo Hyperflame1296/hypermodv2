@@ -1,6 +1,6 @@
 let g=(() => ({
-    'div.hypermod#main-menu': {},
-    'div.ugly-button#hypermod-btn': {
+    '.hypermod#main-menu': {},
+    '.ugly-button#hypermod-btn': {
         click: e => {
             let div = $('.hypermod#main-menu')
             if ($('.chatting').length == 0)
@@ -14,17 +14,17 @@ let g=(() => ({
                     })
         }
     },
-    'div.hypermod#tabs div.hypermod': {
+    '.hypermod#tabs .hypermod': {
         click: e => {
-            for (let g of $('div.hypermod#tabs div.hypermod')) {
+            for (let g of $('.hypermod#tabs .hypermod')) {
                 $(g).removeClass('active')
-                $(`div.hypermod#tab-content div.hypermod.hm-section#${g.id}-content`).removeClass('active')
+                $(`.hypermod#tab-content .hypermod.hm-section#${g.id}-content`).removeClass('active')
             }
             $(e.target).addClass('active')
-            $(`div.hypermod#tab-content div.hypermod.hm-section#${e.target.id}-content`).addClass('active')
+            $(`.hypermod#tab-content .hypermod.hm-section#${e.target.id}-content`).addClass('active')
         }
     },
-    'div.hypermod.hm-button#apply-button': {
+    '.hypermod.hm-button#apply-button': {
         click: e => {
             let g = e.target
             $(g).addClass('inactive')
@@ -37,7 +37,7 @@ let g=(() => ({
             }
         }
     },
-    'div.hypermod.hm-button#exit-button': {
+    '.hypermod.hm-button#exit-button': {
         click: e => {
             let div = $('.hypermod#main-menu')
             if ($('.chatting').length == 0)
@@ -51,14 +51,14 @@ let g=(() => ({
                     })
         }
     },
-    'div.hypermod.hm-button#reconnect-button': {
+    '.hypermod.hm-button#reconnect-button': {
         click: e => {
             if (typeof MPP === 'undefined')
                 return
 
             if (MPP.client.isConnected()) {
-                MPP.client.stop()
-                setTimeout(() => MPP.client.start(), 500)
+                MPP.client.ws.close()
+                MPP.client.connect()
             } else {
                 if (!MPP.client.canConnect)
                     MPP.client.start()
@@ -67,13 +67,54 @@ let g=(() => ({
             }
         }
     },
-    'div.hypermod.hm-button#reset-url-button': {
+    '.hypermod.hm-button#reset-url-button': {
         click: e => {
-            let applyButton = $('div.hypermod.hm-button#apply-button')
+            let applyButton = $('.hypermod.hm-button#apply-button')
             let g = $('input.hypermod.hm-input#ws-url-input')
             g[0].value = 'wss://mppclone.com'
             this.settings[g[0].dataset.setting] = g.val()
             applyButton.removeClass('inactive')
+        }
+    },
+    '.hypermod.hm-button#play-midi-button': {
+        click: async e => {
+            this.playMIDI()
+            let play = $(e.target)
+            let pause = $('.hypermod.hm-button#pause-midi-button')
+            let stop = $('.hypermod.hm-button#stop-midi-button')
+            play.addClass('inactive')
+            pause.removeClass('inactive')
+            stop.removeClass('inactive')
+        }
+    },
+    '.hypermod.hm-button#pause-midi-button': {
+        click: async e => {
+            this.pauseMIDI()
+            let play = $('.hypermod.hm-button#play-midi-button')
+            let pause = $(e.target)
+            let stop = $('.hypermod.hm-button#stop-midi-button')
+            play.removeClass('inactive')
+            pause.addClass('inactive')
+            stop.removeClass('inactive')
+        }
+    },
+    '.hypermod.hm-button#stop-midi-button': {
+        click: async e => {
+            this.stopMIDI()
+            let play = $('.hypermod.hm-button#play-midi-button')
+            let pause = $('.hypermod.hm-button#pause-midi-button')
+            let stop = $(e.target)
+            play.removeClass('inactive')
+            pause.addClass('inactive')
+            stop.addClass('inactive')
+        }
+    },
+    '.hypermod.hm-button#add-midi-button': {
+        click: async e => {
+            if (this.player.isPlaying)
+                return
+
+            await this.openMIDIDialog()
         }
     },
     'input.hypermod': {
@@ -81,8 +122,9 @@ let g=(() => ({
             let g = e.target
             if (!g.dataset.setting)
                 return
-
-            let applyButton = $('div.hypermod.hm-button#apply-button')
+            if (typeof this.settings[g.dataset.setting] === 'undefined')
+                return
+            let applyButton = $('.hypermod.hm-button#apply-button')
             switch (g.type) {
                 case 'checkbox':
                     this.settings[g.dataset.setting] = g.checked
@@ -98,7 +140,9 @@ let g=(() => ({
             let g = e.target
             if (!g.dataset.setting)
                 return
-            let applyButton = $('div.hypermod.hm-button#apply-button')
+            if (typeof this.settings[g.dataset.setting] === 'undefined')
+                return
+            let applyButton = $('.hypermod.hm-button#apply-button')
             switch (g.type) {
                 case 'range':
                     let s = $(`span.hypermod[data-setting=${g.dataset.setting}]`)

@@ -13,6 +13,7 @@ class HyperMod {
     defaultSettings = {
         // MPP section
         forceInfNoteQuota: true,
+        disableAudioEngine: false,
         trackNPS: false,
         connectUrl: 'wss://mppclone.com',
         // Player section
@@ -25,6 +26,7 @@ class HyperMod {
         removeKeyShadows: true,
         removeKeyGradients: false,
         removeKeyFade: true,
+        enableBufferedBlips: false,
         enableBlipLimit: true,
         blipLimit: 8,
         // visuals section
@@ -32,12 +34,15 @@ class HyperMod {
         removeRainbowGraphics: false,
         enableFpsGraph: true,
         fpsCalculationInterval: 125,
+        enableNoteVisualizer: false,
+        noteVisualizerInterval: 125,
         noteVisualizerSpeed: 100,
         enableNoteColors: true
     }
     settings = {
         // MPP section
         forceInfNoteQuota: true,
+        disableAudioEngine: false,
         trackNPS: false,
         connectUrl: 'wss://mppclone.com',
         // Player section
@@ -50,6 +55,7 @@ class HyperMod {
         removeKeyShadows: true,
         removeKeyGradients: false,
         removeKeyFade: true,
+        enableBufferedBlips: false,
         enableBlipLimit: true,
         blipLimit: 8,
         // visuals section
@@ -57,7 +63,8 @@ class HyperMod {
         removeRainbowGraphics: false,
         enableFpsGraph: true,
         fpsCalculationInterval: 125,
-        enableNoteVisualizer: true,
+        enableNoteVisualizer: false,
+        noteVisualizerInterval: 125,
         noteVisualizerSpeed: 100,
         enableNoteColors: true
     }
@@ -299,22 +306,41 @@ class HyperMod {
             this.fpsHist.push(this.fps)
         }
     }
-    async loadMIDI(uri) {
+    async loadMIDI(fn) {
+        let data = await this.fileData.get(fn)
+        if (!data)
+            throw new Error(`There is no MIDI named \'${fn}\' loaded into HyperMod.`)
+        this.currentFile = fn
+        return await this.player.loadArrayBuffer(data)
+    }
+    async loadMIDIurl(uri) {
         let url = new URL(uri)
         let file = await fetch(url)
         let data = await file.arrayBuffer()
-        await this.player.loadArrayBuffer(data)
+        return await this.player.loadArrayBuffer(data)
     }
     unloadMIDI() {
+        this.player
         this.player.unload()
+        this.currentFile = undefined
+        this.updateFileList()
     }
     playMIDI() {
+        if (this.player.isPlaying)
+            return
+        
         this.player.play()
     }
     pauseMIDI() {
+        if (!this.player.isPlaying)
+            return
+
         this.player.pause()
     }
     stopMIDI() {
+        if (!this.player.isPlaying)
+            return
+
         this.player.stop()
     }
     resetSettings() {
@@ -329,22 +355,60 @@ class HyperMod {
         this.settings = localStorage['hm.settings'] ? JSON.parse(localStorage['hm.settings']) : this.defaultSettings
         this.lsSettings = structuredClone(this.settings)
     }
+    updateFileList() {
+        let list = $('ul.hypermod#files')
+        list.empty()
+        if (Array.from(this.fileData.keys()).length <= 0)
+            return list.html('(none)')
+
+        for (let key of this.fileData.keys()) {
+            let li = document.createElement('li')
+            let p = document.createElement('p')
+            let a = key === this.currentFile ? document.createElement('p') : document.createElement('a')
+            $(li).addClass('hypermod hm-inline')
+            $(p).addClass('hypermod')
+            key !== this.currentFile ? $(a).addClass('hypermod hm-link') : void 0
+            $(p).html(key)
+            $(a).html(key === this.currentFile ? '<i style=\'color: darkgray\'>Loaded</i>' : 'Load')
+            $(p).attr('title', 'File name.')
+            $(a).attr('title', key === this.currentFile ? 'This MIDI is currently loaded.' : 'Load this MIDI.')
+            $(a).attr('data-file', key)
+            $(a).attr('id', 'load-file-link')
+            if (key !== this.currentFile)
+                $(a).click(async e => {
+                    let g = e.target
+                    if (!g.dataset.file)
+                        return
+
+                    await this.loadMIDI(g.dataset.file)
+                    this.updateFileList()
+                })
+            $(li).append(p)
+            $(li).append(a)
+            list.append(li)
+        }
+        if (typeof this.currentFile === 'undefined')
+            $('.hypermod#midi-controls').addClass('inactive')
+        else
+            $('.hypermod#midi-controls').removeClass('inactive')
+    }
     async openMIDIDialog() {
         return new Promise((resolve, reject) => {
             let input = document.createElement('input');
             input.type = 'file', input.accept = '.mid,.midi'
             input.addEventListener('change', async e => {
-                let file = e.target.files[0];
-                if (!file) return reject('No file selected');
                 try {
-                    let arrayBuffer = await file.arrayBuffer();
-                    this.fileData.set(file.name, arrayBuffer)
-                    resolve(arrayBuffer);
+                    for (let file of e.target.files) {
+                        if (!file) continue;
+                        this.fileData.set(file.name,  await file.arrayBuffer())
+                    }
                 } catch (err) {
-                    reject(err);
+                    reject(err)
                 }
+                this.updateFileList()
             })
             input.click();
+            resolve()
         });
     }
     async loadUI() {

@@ -19,6 +19,10 @@
                 <label for='force-inf-notequota-switch'>Force infinite NoteQuota:</label>
                 <input class='hypermod hm-checkbox' type='checkbox' data-setting='forceInfNoteQuota' id='force-inf-notequota-switch'>
             </div>
+            <div class='hypermod' id='disable-audio-engine-switch-c' title='Disables the garbage AudioEngineWeb that MPP uses.'>
+                <label for='disable-audio-engine-switch'>Disable audio engine:</label>
+                <input class='hypermod hm-checkbox' type='checkbox' data-setting='disableAudioEngine' id='disable-audio-engine-switch'>
+            </div>
             <div class='hypermod' id='track-nps-switch-c' title='Tracks the global Notes per Second. (this setting greatly decreases performance!)'>
                 <label for='track-nps-switch'>Track NPS:</label>
                 <input class='hypermod hm-checkbox' type='checkbox' data-setting='trackNPS' id='track-nps-switch'>
@@ -39,13 +43,21 @@
                 <label for='enable-channel-colors-switch'>Enable channel colors:</label>
                 <input class='hypermod hm-checkbox' type='checkbox' data-setting='enableChannelColors' id='enable-channel-colors-switch'>
             </div>
+            <br>
             <div class='hypermod' id='files-c' title='File info.'>
-                <p>Files:</p>
+                <p>MIDI Files:</p>
                 <div class='hypermod indent'>
-                    <p class='hypermod'>
+                    <ul class='hypermod' id='files'>
                         <i class='hypermod' style='color: darkgrey'>(none)</i>
-                    </p>
+                    </ul>
+                    <div class='hypermod hm-inline inactive' id='midi-controls' title='MIDI controls.'>
+                        <div class='hypermod hm-button' id='play-midi-button'>Play</div>
+                        <div class='hypermod hm-button inactive' id='pause-midi-button'>Pause</div>
+                        <div class='hypermod hm-button inactive' id='stop-midi-button'>Stop</div>
+                    </div>
+                    <div class='hypermod hm-button' id='add-midi-button'>Add file(s)...</div>
                 </div>
+                <br>
             </div>
         </div>
         <div class='hypermod hm-section' id='optimizations-tab-content'>
@@ -74,6 +86,10 @@
                 <input class='hypermod hm-checkbox' type='checkbox' data-setting='removeNoteBouncing' id='remove-note-bouncing-switch'>
             </div>
             <br>
+            <div class='hypermod' id='enable-buffered-blips-switch-c' title='Use a buffer for blips. (credit to Anonygirl for this code)'>
+                <label for='enable-buffered-blips-switch'>Enable buffered blips:</label>
+                <input class='hypermod hm-checkbox' type='checkbox' data-setting='enableBufferedBlips' id='enable-buffered-blips-switch'>
+            </div>
             <div class='hypermod' id='enable-blip-limit-switch-c' title='Limits the amount of blips (the blocks that appear when a note is hit) that can appear.'>
                 <label for='enable-blip-limit-switch'>Enable blip limit:</label>
                 <input class='hypermod hm-checkbox' type='checkbox' data-setting='enableBlipLimit' id='enable-blip-limit-switch'>
@@ -102,9 +118,21 @@
             </div>
             <div class='hypermod indent'>
                 <div class='hypermod' id='fps-calculation-interval-c' title='How slow the FPS gets calculated.'>
-                    <label for='fps-calculation-interval'>FPS calculation interval:</label>
+                    <label for='fps-calculation-interval-slider'>FPS calculation interval:</label>
                     <input class='hypermod hm-slider' type='range' data-setting='fpsCalculationInterval' id='fps-calculation-interval-slider' min='1' max='2000' value='125'>
                     <span class='hypermod' data-setting='fpsCalculationInterval'>125</span>
+                </div>
+            </div>
+            <br>
+            <div class='hypermod' id='enable-note-visualizer-switch-c' title='Enables the note visualizer.'>
+                <label for='enable-note-visualizer-switch'>Enable note visualizer:</label>
+                <input class='hypermod hm-checkbox' type='checkbox' data-setting='enableNoteVisualizer' id='enable-note-visualizer-switch'>
+            </div>
+            <div class='hypermod indent'>
+                <div class='hypermod' id='note-visualizer-interval-c' title='How slow notes move by on the visualizer.'>
+                    <label for='note-visualizer-interval-slider'>Note visualizer interval:</label>
+                    <input class='hypermod hm-slider' type='range' data-setting='noteVisualizerInterval' id='note-visualizer-interval-slider' min='1' max='2000' value='125'>
+                    <span class='hypermod' data-setting='noteVisualizerInterval'>125</span>
                 </div>
             </div>
         </div>
