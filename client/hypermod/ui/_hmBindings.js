@@ -4,13 +4,15 @@ let g=(() => ({
         click: e => {
             let div = $('.hypermod#main-menu')
             if ($('.chatting').length == 0)
-                div[0].style.display == 'block' ?
+                div[0].style.pointerEvents == 'all' ?
                     div.css({
-                        display: 'none'
+                        'pointer-events': 'none',
+                        opacity: '0'
                     })
                 :
                     div.css({
-                        display: 'block'
+                        'pointer-events': 'all',
+                        opacity: '1'
                     })
         }
     },
@@ -41,13 +43,15 @@ let g=(() => ({
         click: e => {
             let div = $('.hypermod#main-menu')
             if ($('.chatting').length == 0)
-                div[0].style.display == 'block' ?
+                div[0].style.pointerEvents == 'all' ?
                     div.css({
-                        display: 'none'
+                        'pointer-events': 'none',
+                        opacity: '0'
                     })
                 :
                     div.css({
-                        display: 'block'
+                        'pointer-events': 'all',
+                        opacity: '1'
                     })
         }
     },
