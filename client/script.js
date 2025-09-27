@@ -72,7 +72,7 @@ $(function() {
     // Utility
 
     ////////////////////////////////////////////////////////////////
-    let gHyperMod = new HyperMod
+    let gHyperMod = new HyperMod()
     class Rect {
         constructor(x, y, w, h) {
             this.x = x
@@ -155,7 +155,7 @@ $(function() {
             }
         }
         init(cb) {
-            AudioEngine.prototype.init.call(this)
+            super.init(this)
             this.context = new AudioContext({ latencyHint: 'interactive' })
 
             this.masterGain = this.context.createGain()
@@ -180,7 +180,7 @@ $(function() {
 
             this.playings = {}
 
-            if (cb) setTimeout(cb, 0)
+            if (cb) requestAnimationFrame(cb)
             return this
         }
         load(id, url, cb) {
@@ -230,7 +230,7 @@ $(function() {
             this.playings[id] = { source: source, gain: gain, part_id: part_id }
 
             if (enableSynth) {
-                this.playings[id].voice = new synthVoice(id, time)
+                this.playings[id].voice = new SynthVoice(id, time)
             }
         }
         play(id, vol, delay_ms, part_id) {
@@ -296,7 +296,7 @@ $(function() {
             }
         }
         setVolume(x) {
-            AudioEngine.prototype.setVolume.call(this, x)
+            super.setVolume(x)
             this.masterGain.gain.value = this.volume
         }
         resume() {
@@ -3891,27 +3891,28 @@ $(function() {
     var osc1_sustain = 0.5
     var osc1_release = 2.0
 
-    function synthVoice(note_name, time) {
-        var note_number = MIDI_KEY_NAMES.indexOf(note_name)
-        note_number = note_number + 9 - MIDI_TRANSPOSE
-        var freq = Math.pow(2, (note_number - 69) / 12) * 440.0
-        this.osc = context.createOscillator()
-        this.osc.type = osc1_type
-        this.osc.frequency.value = freq
-        this.gain = context.createGain()
-        this.gain.gain.value = 0
-        this.osc.connect(this.gain)
-        this.gain.connect(synth_gain)
-        this.osc.start(time)
-        this.gain.gain.setValueAtTime(0, time)
-        this.gain.gain.linearRampToValueAtTime(1, time + osc1_attack)
-        this.gain.gain.linearRampToValueAtTime(osc1_sustain, time + osc1_attack + osc1_decay)
-    }
-
-    synthVoice.prototype.stop = function (time) {
-        //this.gain.gain.setValueAtTime(osc1_sustain, time);
-        this.gain.gain.linearRampToValueAtTime(0, time + osc1_release)
-        this.osc.stop(time + osc1_release)
+    class SynthVoice {
+        constructor(note_name, time) {
+            var note_number = MIDI_KEY_NAMES.indexOf(note_name)
+            note_number = note_number + 9 - MIDI_TRANSPOSE
+            var freq = Math.pow(2, (note_number - 69) / 12) * 440.0
+            this.osc = context.createOscillator()
+            this.osc.type = osc1_type
+            this.osc.frequency.value = freq
+            this.gain = context.createGain()
+            this.gain.gain.value = 0
+            this.osc.connect(this.gain)
+            this.gain.connect(synth_gain)
+            this.osc.start(time)
+            this.gain.gain.setValueAtTime(0, time)
+            this.gain.gain.linearRampToValueAtTime(1, time + osc1_attack)
+            this.gain.gain.linearRampToValueAtTime(osc1_sustain, time + osc1_attack + osc1_decay)
+        }
+        stop(time) {
+            //this.gain.gain.setValueAtTime(osc1_sustain, time);
+            this.gain.gain.linearRampToValueAtTime(0, time + osc1_release)
+            this.osc.stop(time + osc1_release)
+        }
     }
     ;(function () {
         var button = document.getElementById('synth-btn')

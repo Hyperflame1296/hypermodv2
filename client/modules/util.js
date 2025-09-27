@@ -1,4 +1,3 @@
-/** @format */
 const GeneratorFunction = Object.getPrototypeOf(function*(){}).constructor
 const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor
 const AsyncGeneratorFunction = Object.getPrototypeOf(async function*(){}).constructor
