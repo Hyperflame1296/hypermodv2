@@ -304,6 +304,72 @@ $(function() {
             this.context.resume()
         }
     }
+    class HMAudioEngine extends AudioEngine { // for future hse
+        initialized = false
+        bufferLength = 0.125
+        voices = {}
+        lastTime = 0
+        constructor() {
+            super()
+        }
+        init(cb) {
+            if (this.initialized) return this
+            super.init()
+            this.context = new AudioContext()
+            this.initialized = true
+            this.lastTime = performance.now()
+            this.buffer = this.context.createBuffer(2, this.context.sampleRate * this.bufferLength, this.context.sampleRate)
+            this.source = this.context.createBufferSource()
+            this.source.buffer = this.buffer
+            this.source.connect(this.context.destination)
+            this.source.start()
+            if (cb) requestAnimationFrame(cb)
+            this.writeBuffer()
+            this.loop()
+            return this
+        }
+        loop() {
+            if (!this.initialized) return
+            if (performance.now() - this.lastTime > this.bufferLength * 1000) {
+                this.source.stop()
+                this.writeBuffer()
+                this.source = this.context.createBufferSource()
+                this.source.buffer = this.buffer
+                this.source.connect(this.context.destination)
+                this.source.start()
+                this.lastTime = performance.now()
+            }
+            requestAnimationFrame(this.loop)
+        }
+        play() {
+            
+        }
+        writeBuffer() {
+            
+        }
+        load(id, url, cb) {
+            try {
+                fetch(url).then(f => {
+                    if (!f.ok) throw new Error('http error: ' + f.status)
+                    f.arrayBuffer().then(data => {
+                        this.context.decodeAudioData(data).then(b => {
+                            this.sounds[id] = b
+                            cb?.()
+                        })
+                    })
+                })
+            } catch (e) {
+                console.error(`${e}\n${e.stack}`)
+                new SiteNotification({
+                    id: 'audio-download-error',
+                    title: 'Problem',
+                    text: 'For some reason, an audio download failed:' + e.message,
+                    target: '#piano',
+                    duration: 10000
+                })
+            }
+        }
+    }
 
     // Renderer classes
 

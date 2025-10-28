@@ -16,7 +16,7 @@ let mimeTypes = {
 }
 
 let publicDir = path.join(__dirname, 'build') // serve from ./build
-
+let port = 8080
 let server = http.createServer((req, res) => {
     // Normalize path
     let safePath = path.normalize(decodeURI(req.url)).replace(/^(\.\.[\/\\])+/, '')
@@ -56,7 +56,6 @@ let server = http.createServer((req, res) => {
         }
     })
 })
-
-server.listen(8080, () => {
-    console.log('Server running at http://localhost:8080')
+server.listen(port, () => {
+    console.log(`Server running at http://localhost:${port}`)
 })
