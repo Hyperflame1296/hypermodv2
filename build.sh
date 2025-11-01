@@ -1,1 +1,2 @@
-npx babel src --out-dir dist --copy-files --source-maps
+clear
+npx babel src --out-dir dist --copy-files

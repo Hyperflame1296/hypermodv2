@@ -7,7 +7,7 @@ export default defineConfig([{
         parser: babelParser,
         ecmaVersion: 2024,
         sourceType: 'module',
-
+        
         parserOptions: {
             requireConfigFile: false,
 

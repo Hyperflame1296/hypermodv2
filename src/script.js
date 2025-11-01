@@ -3042,7 +3042,7 @@ $(function() {
 
     ////////////////////////////////////////////////////////////////
 
-    var chat = (function () {
+    var chat = do {
         gClient.on('ch', function (msg) {
             if (msg.ch.settings.chat) {
                 chat.show()
@@ -3158,9 +3158,9 @@ $(function() {
         }
       }
     });*/
-        var messageCache = []
+        var messageCache = [];
 
-        return {
+        ({
             startDM: function (part) {
                 gIsDming = true
                 gDmParticipant = part
@@ -3534,8 +3534,8 @@ $(function() {
                     if (ele.scrollTop > ele.scrollHeight - ele.offsetHeight - 50) chat.scrollToBottom()
                 }
             }
-        }
-    })()
+        })
+    }
 
     // MIDI
 

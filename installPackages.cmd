@@ -1,2 +1,3 @@
 @echo off
-npm install @babel/core @babel/cli @babel/preset-env @babel/plugin-proposal-throw-expressions @babel/eslint-parser eslint
+cls
+npm install @babel/core @babel/cli @babel/preset-env @babel/plugin-proposal-throw-expressions @babel/plugin-proposal-do-expressions @babel/plugin-proposal-function-bind @babel/eslint-parser eslint

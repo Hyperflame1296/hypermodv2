@@ -101,7 +101,7 @@ class Client extends EventEmitter {
             var idx = this.connectionAttempts
             if (idx >= ms_lut.length) idx = ms_lut.length - 1
             var ms = ms_lut[idx]
-            setTimeout(this.connect.bind(this), ms)
+            setTimeout(::this.connect, ms)
         })
         this.ws.addEventListener('error', e => {
             this.emit('wserror', e)

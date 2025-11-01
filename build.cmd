@@ -1,2 +1,3 @@
 @echo off
-npx babel src --out-dir dist --copy-files  --source-maps
+cls
+npx babel src --out-dir dist --copy-files
