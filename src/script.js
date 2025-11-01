@@ -413,9 +413,7 @@ $(function() {
             this.ctx = this.canvas.getContext('2d')
             piano.rootElement.append(this.canvas)
 
-            this.piano = piano
-            this.resize()
-
+            super.init(piano)
             // create render loop
 
             var render = () => {
@@ -466,15 +464,7 @@ $(function() {
             return this
         }
         resize(width, height) {
-            if (typeof width == 'undefined') width = $(this.piano.rootElement).width()
-            if (typeof height == 'undefined') height = Math.floor(width * 0.2)
-            $(this.piano.rootElement).css({
-                height: height + 'px',
-                marginTop: Math.floor($(window).height() / 2 - height / 2) + 'px'
-            })
-            this.width = width * window.devicePixelRatio
-            this.height = height * window.devicePixelRatio
-
+            super.resize(width, height)
             if (this.width < 104) this.width = 104
             if (this.height < this.width * 0.2) this.height = Math.floor(this.width * 0.2)
             this.canvas.width = this.width
@@ -609,10 +599,9 @@ $(function() {
                     }
                 }
             }
-
             // update key rects
             for (var i in this.piano.keys) {
-                if (!this.piano.keys.hasOwnProperty(i)) continue
+                if (!this.piano.keys[i]) continue
                 var key = this.piano.keys[i]
                 if (key.sharp) {
                     key.rect = new Rect(
@@ -929,8 +918,6 @@ $(function() {
         }
         init() {
             window.AudioContext = window.AudioContext || window.webkitAudioContext || undefined
-            this.audio = new AudioEngineWeb().init()
-            this.renderer = new CanvasRenderer().init(this)
             this.keys = {}
 
             var white_spatial = 0
@@ -963,7 +950,8 @@ $(function() {
                 }
                 addKey('c', 7)
             }
-
+            this.audio = new AudioEngineWeb().init()
+            this.renderer = new CanvasRenderer().init(this)
             window.addEventListener('resize', () => {
                 this.renderer.resize()
             })
@@ -3690,7 +3678,7 @@ $(function() {
                                     var v = vel
                                     delay_ms ??= 0
                                     if (output.volume !== undefined) v *= output.volume
-                                    output.send([0x90, note_number, v], window.performance.now() + delay_ms)
+                                    output.send([0x90, note_number, v], performance.now() + delay_ms)
                                 }
                             } catch (err) {
                                 console.error(err)
