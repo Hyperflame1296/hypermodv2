@@ -15,7 +15,7 @@ let mimeTypes = {
     '.wav': 'audio/wav'
 }
 
-let publicDir = path.join(__dirname, 'build') // serve from ./build
+let publicDir = path.join(__dirname, 'dist') // serve from ./dist
 let port = 8080
 let server = http.createServer((req, res) => {
     // Normalize path
