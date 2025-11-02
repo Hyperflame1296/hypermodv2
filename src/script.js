@@ -3891,9 +3891,11 @@ $(function() {
     }
 
     // API
-    window.MPP = {
+    globalThis.MPP = {
         press: (...args) => keyboard.press(...args),
         release: (...args) => keyboard.release(...args),
+        pressSustain: (...args) => keyboard.sustainDown(...args),
+        releaseSustain: (...args) => keyboard.sustainUp(...args),
         keyboard,
         addons: {
             hyperMod: gHyperMod
