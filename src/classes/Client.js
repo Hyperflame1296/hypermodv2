@@ -108,8 +108,8 @@ class Client extends EventEmitter {
             this.ws.close() // this.ws.emit("close");
         })
         this.ws.addEventListener('open', e => {
-            this.connectionTime = Date.now()
             if (hiDB.find(u => u.host === uri.host)) {
+                this.connectionTime = Date.now()
                 this.sendArray([
                     {
                         m: 'hi', 
@@ -117,7 +117,7 @@ class Client extends EventEmitter {
                     }
                 ]);
             }
-            this.pingInterval = setInterval(this.sendPing.bind(this), 20000)
+            this.pingInterval = setInterval(::this.sendPing, 20000)
             this.noteBuffer = []
             this.noteBufferTime = 0
             this.noteFlushInterval = setInterval((() => {
