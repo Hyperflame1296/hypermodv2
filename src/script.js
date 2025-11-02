@@ -433,7 +433,7 @@ $(function() {
                 var pos = CanvasRenderer.translateMouseEvent(e)
                 var hit = this.getHit(pos.x, pos.y)
                 if (hit) {
-                    press(hit.key.note, hit.v)
+                    keyboard.press(hit.key.note, hit.v)
                     last_key = hit.key
                 }
             })
@@ -447,7 +447,7 @@ $(function() {
                         var pos = CanvasRenderer.translateMouseEvent(e.changedTouches[i])
                         var hit = this.getHit(pos.x, pos.y)
                         if (hit) {
-                            press(hit.key.note, hit.v)
+                            keyboard.press(hit.key.note, hit.v)
                             last_key = hit.key
                         }
                     }
@@ -456,7 +456,7 @@ $(function() {
             )
             $(window).mouseup(() => {
                 if (last_key) {
-                    release(last_key.note)
+                    keyboard.release(last_key.note)
                 }
                 mouse_down = false
                 last_key = null
@@ -1121,58 +1121,58 @@ $(function() {
     //gSoundSelector.addPacks(["/sounds/Emotional_2.0/", "/sounds/Harp/", "/sounds/Music_Box/", "/sounds/Vintage_Upright/", "/sounds/Steinway_Grand/", "/sounds/Emotional/", "/sounds/Untitled/"]);
     gSoundSelector.init()
 
-    var gAutoSustain = false
-    var gSustain = false
+    let keyboard = new class Keyboard {
+        sustain = false
+        autoSustain = false
+        heldNotes = {}
+        sustainNotes = {}
+        press(id, vol) {
+            if (gClient.preventsPlaying() || gNoteQuota.points - 1 <= 0)
+                return
+            this.heldNotes[id] = true
+            if ((this.sustain || this.autoSustain) && !enableSynth)
+                this.sustainNotes[id] = true;
 
-    var gHeldNotes = {}
-    var gSustainedNotes = {}
-
-    function press(id, vol) {
-        if (!gClient.preventsPlaying() && gNoteQuota.spend(1)) {
-            gHeldNotes[id] = true
-            gSustainedNotes[id] = true;
             if (gHyperMod.lsSettings.enableBufferedBlips)
                 gPiano.bufferPlay(id, vol !== undefined ? vol : DEFAULT_VELOCITY, gClient.getOwnParticipant(), 0)
             else
                 gPiano.play(id, vol !== undefined ? vol : DEFAULT_VELOCITY, gClient.getOwnParticipant(), 0)
             gClient.startNote(id, vol)
+            gNoteQuota.spend(1)
         }
-    }
-
-    function release(id) {
-        if (gHeldNotes[id]) {
-            gHeldNotes[id] = false
-            if ((gAutoSustain || gSustain) && !enableSynth) {
-                gSustainedNotes[id] = true
-            } else {
-                if (gNoteQuota.spend(1)) {
-                    gPiano.stop(id, gClient.getOwnParticipant(), 0)
-                    gClient.stopNote(id)
-                    gSustainedNotes[id] = false
-                }
+        release(id) {
+            if (!this.heldNotes[id])
+                return
+            this.heldNotes[id] = false
+            if ((this.sustain || this.autoSustain) && !enableSynth)
+                return this.sustainNotes[id] = true
+            if (gNoteQuota.points - 1 <= 0)
+                return
+            gPiano.stop(id, gClient.getOwnParticipant(), 0)
+            gClient.stopNote(id)
+            gNoteQuota.spend(1)
+        }
+        sustainDown() {
+            if (this.autoSustain)
+                return
+            this.sustain = true
+        }
+        sustainUp() {
+            if (this.autoSustain)
+                return
+            this.sustain = false
+            for (let key in this.sustainNotes) {
+                if (!key || !this.sustainNotes[key])
+                    continue
+                if (gNoteQuota.points - 1 <= 0)
+                    continue
+                gPiano.stop(key, gClient.getOwnParticipant(), 0)
+                gClient.stopNote(key)
+                gNoteQuota.spend(1)
             }
+            this.sustainNotes = {}
         }
     }
-
-    function pressSustain() {
-        gSustain = true
-    }
-
-    function releaseSustain() {
-        gSustain = false
-        if (!gAutoSustain) {
-            for (var id in gSustainedNotes) {
-                if (gSustainedNotes.hasOwnProperty(id) && gSustainedNotes[id] && !gHeldNotes[id]) {
-                    gSustainedNotes[id] = false
-                    if (gNoteQuota.spend(1)) {
-                        gPiano.stop(id, gClient.getOwnParticipant(), 0)
-                        gClient.stopNote(id)
-                    }
-                }
-            }
-        }
-    }
-
     function getParameterByName(name, url = window.location.href) {
         name = name.replace(/[\[\]]/g, '\\$&')
         var regex = new RegExp('[?&]' + name + '(=([^&#]*)|&|#|$)'),
@@ -2040,7 +2040,7 @@ $(function() {
                 } else note = keys[index + transpose]
                 if (note === undefined) return
                 var vol = velocityFromMouseY()
-                press(note, vol)
+                keyboard.press(note, vol)
             }
 
             if (++gKeyboardSeq == 3) {
@@ -2053,13 +2053,13 @@ $(function() {
             if (!gNoPreventDefault) evt.preventDefault()
             evt.stopPropagation()
             return false
-        } else if (code == 20) {
+        } else if (code == 0x14) {
             // Caps Lock
             capsLockKey = true
             if (!gNoPreventDefault) evt.preventDefault()
-        } else if (code === 0x20) {
+        } else if (code == 0x20) {
             // Space Bar
-            pressSustain()
+            keyboard.sustainDown()
             if (!gNoPreventDefault) evt.preventDefault()
         } else if (code === 38 && transpose <= 100) {
             transpose += 12
@@ -2078,7 +2078,9 @@ $(function() {
             if (!gNoPreventDefault) evt.preventDefault()
         } else if (code == 8) {
             // Backspace (don't navigate Back)
-            gAutoSustain = !gAutoSustain
+            keyboard.autoSustain = !keyboard.autoSustain
+            if (!keyboard.autoSustain)
+                keyboard.sustainUp()
             if (!gNoPreventDefault) evt.preventDefault()
         }
     }
@@ -2114,7 +2116,7 @@ $(function() {
                     note = keys[index + transpose + 1]
                 } else note = keys[index + transpose]
                 if (note === undefined) return
-                release(note)
+                keyboard.release(note)
             }
 
             if (!gNoPreventDefault) evt.preventDefault()
@@ -2126,7 +2128,7 @@ $(function() {
             if (!gNoPreventDefault) evt.preventDefault()
         } else if (code === 0x20) {
             // Space Bar
-            releaseSustain()
+            keyboard.sustainUp()
             if (!gNoPreventDefault) evt.preventDefault()
         }
     }
@@ -3581,19 +3583,19 @@ $(function() {
                 //console.log(channel, cmd, note_number, vel);
                 if (cmd == 8 || (cmd == 9 && vel == 0)) {
                     // NOTE_OFF
-                    release(MIDI_KEY_NAMES[note_number - 9 + MIDI_TRANSPOSE + transpose + pitchBends[channel]])
+                    keyboard.release(MIDI_KEY_NAMES[note_number - 9 + MIDI_TRANSPOSE + transpose + pitchBends[channel]])
                 } else if (cmd == 9) {
                     // NOTE_ON
                     if (evt.target.volume !== undefined) vel *= evt.target.volume
-                    press(MIDI_KEY_NAMES[note_number - 9 + MIDI_TRANSPOSE + transpose + pitchBends[channel]], vel / 127)
+                    keyboard.press(MIDI_KEY_NAMES[note_number - 9 + MIDI_TRANSPOSE + transpose + pitchBends[channel]], vel / 127)
                 } else if (cmd == 11) {
                     // CONTROL_CHANGE
-                    if (!gAutoSustain) {
+                    if (!keyboard.autoSustain) {
                         if (note_number == 64) {
-                            if (vel > 20) {
-                                pressSustain()
+                            if (vel >= 64) {
+                                keyboard.sustainDown()
                             } else {
-                                releaseSustain()
+                                keyboard.sustainUp()
                             }
                         }
                     }
@@ -3678,7 +3680,10 @@ $(function() {
                                     var v = vel
                                     delay_ms ??= 0
                                     if (output.volume !== undefined) v *= output.volume
-                                    output.send([0x90, note_number, v], performance.now() + delay_ms)
+                                    v = Math.trunc(v)
+                                    let channel = Object.keys(gClient.ppl).indexOf(participantId) & 0xf
+                                    let status  = (v <= 0 ? 0x80 : 0x90) | channel
+                                    output.send([0x90, note_number, Math.trunc(v)], performance.now() + delay_ms)
                                 }
                             } catch (err) {
                                 console.error(err)
@@ -3887,33 +3892,9 @@ $(function() {
 
     // API
     window.MPP = {
-        get press() {
-            return press
-        },
-        set press(func) {
-            press = func
-        },
-
-        get release() {
-            return release
-        },
-        set release(func) {
-            release = func
-        },
-
-        get pressSustain() {
-            return pressSustain
-        },
-        set pressSustain(func) {
-            pressSustain = func
-        },
-
-        get releaseSustain() {
-            return releaseSustain
-        },
-        set releaseSustain(func) {
-            releaseSustain = func
-        },
+        press: (...args) => keyboard.press(...args),
+        release: (...args) => keyboard.release(...args),
+        keyboard,
         addons: {
             hyperMod: gHyperMod
         },
