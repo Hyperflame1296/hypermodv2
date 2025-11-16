@@ -453,15 +453,13 @@ class HyperMod {
                 case 'KeyH':
                     let div = $('.hypermod#main-menu')
                     if ($('.chatting').length == 0)
-                        div[0].style.pointerEvents == 'all' ?
+                        div[0].style.display == 'block' ?
                             div.css({
-                                'pointer-events': 'none',
-                                opacity: '0'
+                                display: 'none'
                             })
                         :
                             div.css({
-                                'pointer-events': 'all',
-                                opacity: '1'
+                                display: 'block'
                             })
                     break
             }

@@ -1,6 +1,7 @@
-let http = require('node:http')
-let fs = require('node:fs')
-let path = require('node:path')
+import http from 'node:http'
+import fs from 'node:fs'
+import path from 'node:path'
+import color from 'cli-color'
 console.clear()
 let mimeTypes = {
     '.html': 'text/html',
@@ -12,7 +13,8 @@ let mimeTypes = {
     '.png': 'image/png',
     '.ico': 'image/x-icon',
     '.mp3': 'audio/mpeg',
-    '.wav': 'audio/wav'
+    '.wav': 'audio/wav',
+    '.wasm': 'application/wasm',
 }
 
 let publicDir = './dist/'
@@ -90,5 +92,5 @@ let server = http.createServer((req, res) => {
 })
 
 server.listen(port, () => {
-    console.log(`Server running at http://localhost:${port}`)
+    console.log(`${color.greenBright('HyperModV2')} is running at ${color.cyanBright(`http://localhost:${port}`)}!`)
 })

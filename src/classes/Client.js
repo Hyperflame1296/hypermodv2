@@ -6,7 +6,8 @@ WebSocket.prototype.send = new Proxy(WebSocket.prototype.send, {
     }
 })
 let hiDB = [
-    new URL('wss://mpp.lapishusky.dev')
+    new URL('wss://mpp.lapishusky.dev'),
+    new URL('wss://game.multiplayerpiano.com:443')
 ]
 let binDB = [
     new URL('wss://mpp.lapishusky.dev')

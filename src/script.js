@@ -3681,6 +3681,7 @@ $(function() {
                                     delay_ms ??= 0
                                     if (output.volume !== undefined) v *= output.volume
                                     v = Math.trunc(v)
+                                    // change status byte based on player ID!
                                     let channel = Object.keys(gClient.ppl).indexOf(participantId) & 0xf
                                     let status  = (v <= 0 ? 0x80 : 0x90) | channel
                                     output.send([0x90, note_number, Math.trunc(v)], performance.now() + delay_ms)
@@ -3892,10 +3893,10 @@ $(function() {
 
     // API
     globalThis.MPP = {
-        press: (...args) => keyboard.press(...args),
-        release: (...args) => keyboard.release(...args),
-        pressSustain: (...args) => keyboard.sustainDown(...args),
-        releaseSustain: (...args) => keyboard.sustainUp(...args),
+        press: ::keyboard.press,
+        release: ::keyboard.release,
+        pressSustain: ::keyboard.sustainDown,
+        releaseSustain: ::keyboard.sustainUp,
         keyboard,
         addons: {
             hyperMod: gHyperMod
@@ -4698,7 +4699,7 @@ $(function() {
                     window.oRequestAnimationFrame ||
                     window.msRequestAnimationFrame ||
                     function (callback) {
-                        return window.setTimeout(callback, 16.6666667)
+                        return setTimeout(callback, 16.6666667)
                     }
                 )
             })()

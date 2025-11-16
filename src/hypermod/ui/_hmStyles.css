@@ -3,7 +3,6 @@
         20pt verdana,
         'DejaVu Sans',
         sans-serif;
-    transition: opacity 0.2s
 }
 .hypermod#hypermod-container {
     position: fixed;
@@ -25,6 +24,7 @@
     background-color: #303030;
     border: 4px solid #202020;
     z-index: 2000000000;
+    pointer-events: all
 }
 .hypermod#tabs {
     display: flex;
@@ -60,25 +60,19 @@
     margin-left: 10px;
     width: 100%;
     height: 100%;
+    pointer-events: inherit
 }
 .hypermod.hm-section {
     width: 100%;
     height: 100%;
-    pointer-events: none;
-    opacity: 0;
+    display: none;
     position: absolute
 }
-.hypermod.hm-section * {
-    pointer-events: none;
-    opacity: 0;
+.hypermod#tab-content .hypermod.hm-section {
+    display: none
 }
-.hypermod.hm-section.active {
-    pointer-events: inherit;
-    opacity: 1;
-}
-.hypermod.hm-section.active * {
-    pointer-events: inherit;
-    opacity: 1;
+.hypermod#tab-content .hypermod.hm-section.active {
+    display: block
 }
 .hypermod#buttons {
     position: absolute;
@@ -92,15 +86,14 @@
     background-color: #050505;
     border: 3px solid #000;
     text-align: center;
-    transition: opacity 0.3s, background-color 0.3s, border 0.3s;
+    transition: background-color 0.3s, border 0.3s;
     display: block;
     width: fit-content;
-    pointer-events: all;
-    opacity: 1
+    display: block;
+    pointer-events: all
 }
 .hypermod.inactive, .hypermod.inactive * {
-    pointer-events: none !important;
-    opacity: 0 !important
+    display: none
 }
 .hypermod.hm-button:hover {
     background-color: #808080;

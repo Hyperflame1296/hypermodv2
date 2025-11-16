@@ -5,6 +5,10 @@
     "plugins": [
         "@babel/plugin-proposal-throw-expressions",
         "@babel/plugin-proposal-do-expressions",
-        "@babel/plugin-proposal-function-bind"
+        "@babel/plugin-proposal-function-bind",
+        ["@babel/plugin-proposal-pipeline-operator", { 
+            "proposal": "hack",
+            "topicToken": "#"
+        }]
     ]
 }
