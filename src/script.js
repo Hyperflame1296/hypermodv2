@@ -3565,7 +3565,15 @@ $(function() {
         14: 0,
         15: 0
     }
-
+    let participantChannel = {}
+    function rebuildParticipantChannels() {
+        let keys = Object.keys(gClient.ppl)
+        for (let i = 0; i < keys.length; i++)
+            participantChannel[keys[i]] = i & 0xf
+    }
+    gClient.on('participant added', rebuildParticipantChannels)
+    gClient.on('participant removed', rebuildParticipantChannels)
+    rebuildParticipantChannels()
     ;(async function () {
         if (navigator.requestMIDIAccess) {
             let midi = await navigator.requestMIDIAccess()
@@ -3667,6 +3675,7 @@ $(function() {
                         }
                         //console.log("output", output);
                     }
+                    let messageBuffer = new Uint8Array(3)
                     gMidiOutTest = function (note_name, vel, delay_ms, participantId) {
                         if (!gOutputOwnNotes && participantId === gClient.participantId) return
                         var note_number = MIDI_KEY_NAMES.indexOf(note_name)
@@ -3677,14 +3686,16 @@ $(function() {
                             try {
                                 var output = output_it.value
                                 if (output.enabled) {
-                                    var v = vel
+                                    var v = (output.volume !== undefined ? vel * output.volume : vel) | 0
                                     delay_ms ??= 0
                                     if (output.volume !== undefined) v *= output.volume
-                                    v = Math.trunc(v)
                                     // change status byte based on player ID!
-                                    let channel = Object.keys(gClient.ppl).indexOf(participantId) & 0xf
-                                    let status  = (v <= 0 ? 0x80 : 0x90) | channel
-                                    output.send([0x90, note_number, Math.trunc(v)], performance.now() + delay_ms)
+                                    let channel = participantChannel[participantId]
+                                    let status  = (v <= 0 ? 0x80 : 0x90) | (channel == 10 ? (channel + 1) & 0xf : channel)
+                                    messageBuffer[0] = status
+                                    messageBuffer[1] = note_number
+                                    messageBuffer[2] = v
+                                    output.send(messageBuffer, performance.now() + delay_ms)
                                 }
                             } catch (err) {
                                 console.error(err)
