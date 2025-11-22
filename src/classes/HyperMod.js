@@ -188,8 +188,7 @@ class HyperMod {
                         if (this.lsSettings.enableClientSidePlayback) {
                             MPP.piano.stop(note, p)
                         } else {
-                            if (MPP.noteQuota.points - 1 <= 0) return
-                            MPP.noteQuota.spend(1)
+                            if (!MPP.noteQuota.spend(1)) return
                             MPP.piano.stop(note, p)
                             MPP.client.stopNote(note)
                         }
@@ -197,8 +196,7 @@ class HyperMod {
                         if (this.lsSettings.enableClientSidePlayback) {
                             MPP.piano.play(note, e.velocity / 127, p)
                         } else {
-                            if (MPP.noteQuota.points - 1 <= 0) return
-                            MPP.noteQuota.spend(1)
+                            if (!MPP.noteQuota.spend(1)) return
                             MPP.piano.play(note, e.velocity / 127, p)
                             MPP.client.startNote(note, e.velocity / 127)
                         }
