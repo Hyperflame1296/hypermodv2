@@ -2189,18 +2189,23 @@ $(function() {
             last_rat = rat
         })
     })()
+    let normalNoteQuotaParams = NoteQuota.PARAMS_NORMAL
     if (gHyperMod.lsSettings.forceInfNoteQuota) {
-        gClient.on('nq', function (nq_params) {
+        gClient.on('nq', function(nq_params) {
+            normalNoteQuotaParams = nq_params
             gNoteQuota.setParams(NoteQuota.PARAMS_INFINITE)
         })
         gClient.on('disconnect', function () {
+            normalNoteQuotaParams = NoteQuota.PARAMS_OFFLINE
             gNoteQuota.setParams(NoteQuota.PARAMS_INFINITE)
         })
     } else {
-        gClient.on('nq', function (nq_params) {
+        gClient.on('nq', function(nq_params) {
+            normalNoteQuotaParams = nq_params
             gNoteQuota.setParams(nq_params)
         })
         gClient.on('disconnect', function () {
+            normalNoteQuotaParams = NoteQuota.PARAMS_OFFLINE
             gNoteQuota.setParams(NoteQuota.PARAMS_OFFLINE)
         })
     }
@@ -3916,6 +3921,7 @@ $(function() {
         client: gClient,
         chat: chat,
         noteQuota: gNoteQuota,
+        normalNoteQuotaParams,
         soundSelector: gSoundSelector
     }
 

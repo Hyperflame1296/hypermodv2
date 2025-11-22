@@ -33,6 +33,8 @@
                 if (typeof MPP !== 'undefined') {
                     if (hyperMod.lsSettings.forceInfNoteQuota) {
                         MPP.noteQuota.setParams(NoteQuota.PARAMS_INFINITE)
+                    } else {
+                        MPP.noteQuota.setParams(MPP.normalNoteQuotaParams)
                     }
                     MPP.client.uri = hyperMod.lsSettings.connectUrl
                 }
