@@ -24,15 +24,16 @@
     background-color: #303030;
     border: 4px solid #202020;
     z-index: 2000000000;
-    pointer-events: all
+    pointer-events: all;
+    overflow: visible
 }
 .hypermod#tabs {
     display: flex;
     gap: 8px;
     height: 50px;
     align-items: center;
-    position: relative;
-    top: -25px;
+    position: absolute;
+    top: -50px;
 }
 .hypermod#tabs .hypermod {
     position: relative;
@@ -44,20 +45,23 @@
     text-align: center;
     line-height: 42px;
     cursor: pointer;
-    transition: background-color 0.3s, border 0.3s, top 0.3s;
+    transition: background-color 0.3s, border 0.3s, height 0.3s, top 0.3s;
 }
 .hypermod#tabs .hypermod:hover {
     background-color: #404040;
     border: 4px solid #303030;
-    top: -5px;
+    height: 55px;
+    top: -2.5px
 }
 .hypermod#tabs .hypermod.active {
     background-color: #404040;
     border: 4px solid #303030;
-    top: -12.5px;
+    height: 65px;
+    top: -7.5px
 }
 .hypermod#tab-content {
     margin-left: 10px;
+    margin-top: 10px;
     width: 100%;
     height: 100%;
     pointer-events: inherit
@@ -68,8 +72,22 @@
     display: none;
     position: absolute
 }
+.hypermod#tab-content-wrap {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden
+}
+.hypermod#tab-content {
+    width: 100%;
+    height: 100%;
+    overflow-x: hidden;
+    overflow-y: auto
+}
 .hypermod#tab-content .hypermod.hm-section {
-    display: none
+    display: none;
+    width: 100%;
+    height: 100%;
 }
 .hypermod#tab-content .hypermod.hm-section.active {
     display: block
@@ -177,4 +195,7 @@ li.hypermod {
 .hypermod#midi-controls {
     display: flex;
     gap: 10px;
+}
+i.hypermod {
+    font-style: italic !important
 }

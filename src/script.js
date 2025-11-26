@@ -2178,17 +2178,17 @@ $(function() {
     }
 
     // NoteQuota
-    var gNoteQuota = (function () {
+    var gNoteQuota = do {
         var last_rat = 0
         var nqjq = $('#quota .value')
-        return new NoteQuota(function (points) {
+        new NoteQuota(function (points) {
             // update UI
             var rat = (points / this.max) * 100
             if (rat <= last_rat) nqjq.stop(true, true).css('width', rat.toFixed(0) + '%')
             else nqjq.stop(true, true).animate({ width: rat.toFixed(0) + '%' }, 2000, 'linear')
             last_rat = rat
         })
-    })()
+    }
     let normalNoteQuotaParams = NoteQuota.PARAMS_NORMAL
     if (gHyperMod.lsSettings.forceInfNoteQuota) {
         gClient.on('nq', function(nq_params) {
@@ -3696,7 +3696,7 @@ $(function() {
                                     if (output.volume !== undefined) v *= output.volume
                                     // change status byte based on player ID!
                                     let channel = participantChannel[participantId]
-                                    let status  = (v <= 0 ? 0x80 : 0x90) | (channel == 10 ? (channel + 1) & 0xf : channel)
+                                    let status  = (v <= 0 ? 0x80 : 0x90) | (channel == 9 ? (channel + 1) & 0xf : channel)
                                     messageBuffer[0] = status
                                     messageBuffer[1] = note_number
                                     messageBuffer[2] = v

@@ -354,39 +354,58 @@ class HyperMod {
     updateFileList() {
         let list = $('ul.hypermod#files')
         list.empty()
-        if (Array.from(this.fileData.keys()).length <= 0)
-            return list.html('(none)')
+        if (!this.currentFile || this.fileData.size <= 0)
+            $('.hypermod#midi-controls').addClass('inactive')
+        else
+            $('.hypermod#midi-controls').removeClass('inactive')
+        if (this.fileData.size <= 0)
+            return list.html(`<i class='hypermod' style='color: darkgray'>(none)</i>`)
 
         for (let key of this.fileData.keys()) {
             let li = document.createElement('li')
             let p = document.createElement('p')
-            let a = key === this.currentFile ? document.createElement('p') : document.createElement('a')
+            let load = key === this.currentFile ? document.createElement('p') : document.createElement('a')
+            let del = document.createElement('a')
             $(li).addClass('hypermod hm-inline')
             $(p).addClass('hypermod')
-            key !== this.currentFile ? $(a).addClass('hypermod hm-link') : void 0
             $(p).html(key)
-            $(a).html(key === this.currentFile ? '<i style=\'color: darkgray\'>Loaded</i>' : 'Load')
             $(p).attr('title', 'File name.')
-            $(a).attr('title', key === this.currentFile ? 'This MIDI is currently loaded.' : 'Load this MIDI.')
-            $(a).attr('data-file', key)
-            $(a).attr('id', 'load-file-link')
+            key !== this.currentFile ? $(load).addClass('hypermod hm-link') : $(load).addClass('hypermod')
+            $(load).html(key === this.currentFile ? '<i style=\'color: darkgray\'>Loaded</i>' : 'Load')
+            $(load).attr('title', key === this.currentFile ? 'This MIDI is currently loaded.' : 'Load this MIDI.')
+            $(load).attr('data-file', key)
+            $(load).attr('id', 'load-file-link')
+            key === this.currentFile ? $(del).css({ 'margin-left': '20px' }) : void 0
+            $(del).addClass('hypermod hm-link')
+            $(del).attr('title', 'Remove this MIDI from the list.')
+            $(del).html('Delete')
+            $(del).attr('data-file', key)
+            $(del).attr('id', 'delete-file-link')
             if (key !== this.currentFile)
-                $(a).click(async e => {
+                $(load).click(async e => {
                     let g = e.target
                     if (!g.dataset.file)
                         return
-
+                    let playing = this.player.isPlaying
                     await this.loadMIDI(g.dataset.file)
+                    if (playing)
+                        this.playMIDI()
                     this.updateFileList()
                 })
+            $(del).click(async e => {
+                let g = e.target
+                if (!g.dataset.file)
+                    return
+
+                this.fileData.delete(g.dataset.file)
+                if (this.currentFile === g.dataset.file)
+                    this.unloadMIDI()
+            })
             $(li).append(p)
-            $(li).append(a)
+            $(li).append(load)
+            $(li).append(del)
             list.append(li)
         }
-        if (typeof this.currentFile === 'undefined')
-            $('.hypermod#midi-controls').addClass('inactive')
-        else
-            $('.hypermod#midi-controls').removeClass('inactive')
     }
     async openMIDIDialog() {
         return new Promise((resolve, reject) => {
