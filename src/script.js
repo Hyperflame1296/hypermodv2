@@ -38,8 +38,6 @@ $(function() {
 
     var gMidiVolumeTest = window.location.hash && window.location.hash.match(/^(?:#.+)*#midivolumetest(?:#.+)*$/i)
 
-    var gMidiOutTest
-
     if (!Array.prototype.indexOf) {
         Array.prototype.indexOf = function (elt /*, from*/) {
             var len = this.length >>> 0
@@ -336,7 +334,7 @@ $(function() {
                 this.source.start()
                 this.lastTime = performance.now()
             }
-            requestAnimationFrame(this.loop)
+            requestAnimationFrame(::this.loop)
         }
         play() {
             
@@ -1007,7 +1005,7 @@ $(function() {
                     // --- MIDI flush ---
                     for (let i = 0; i < midiPerFrame && midiBuf.count > 0; i++) {
                         const ev = midiBuf.buf[midiBuf.head];
-                        if (ev && gMidiOutTest) gMidiOutTest(ev.note, ev.vol, ev.delay, ev.participantId);
+                        gMidi.noteOn(ev.note, ev.vol, ev.delay, ev.participantId);
                         midiBuf.head = (midiBuf.head + 1) % midiBuf.buf.length;
                         midiBuf.count--;
                     }
@@ -1051,7 +1049,7 @@ $(function() {
             if (!this.keys.hasOwnProperty(note) || !participant) return
             var key = this.keys[note]
             if (key.loaded && this.audio.volume > 0 && !gHyperMod.lsSettings.disableAudioEngine) this.audio.play(key.note, vol, delay_ms, participant.id)
-            if (gMidiOutTest) gMidiOutTest(key.note, vol * 100, delay_ms, participant.id)
+            gMidi.noteOn(key.note, vol * 100, delay_ms, participant.id)
             // redunant, but idc
             if (delay_ms <= 0) {
                 // spawn a blip
@@ -1090,7 +1088,7 @@ $(function() {
             if (!this.keys.hasOwnProperty(note)) return
             var key = this.keys[note]
             if (key.loaded && this.audio.volume > 0 && !gHyperMod.lsSettings.disableAudioEngine) this.audio.stop(key.note, delay_ms, participant.id)
-            if (gMidiOutTest) gMidiOutTest(key.note, 0, delay_ms, participant.id)
+            gMidi.noteOff(key.note, delay_ms, participant.id)
         }
     }
     var gPiano = new Piano($('#piano')[0]).init()
@@ -1908,9 +1906,11 @@ $(function() {
         $('#volume-label').text('Volume: ' + Math.floor(v * 100) + '%')
     })
 
-    var Note = function (note, octave) {
-        this.note = note
-        this.octave = octave || 0
+    class Note {
+        constructor(note, octave) {
+            this.note = note
+            this.octave = octave || 0
+        }
     }
 
     var n = function (a, b) {
@@ -3578,152 +3578,13 @@ $(function() {
     }
     gClient.on('participant added', rebuildParticipantChannels)
     gClient.on('participant removed', rebuildParticipantChannels)
-    rebuildParticipantChannels()
-    ;(async function () {
-        if (navigator.requestMIDIAccess) {
-            let midi = await navigator.requestMIDIAccess()
-            //console.log(midi);
-            function midimessagehandler(evt) {
-                if (!evt.target.enabled) return
-                //console.log(evt);
-                var channel = evt.data[0] & 0xf
-                var cmd = evt.data[0] >> 4
-                var note_number = evt.data[1]
-                var vel = evt.data[2]
-                if (gDisableMIDIDrumChannel && channel == 9) {
-                    return
-                }
-                //console.log(channel, cmd, note_number, vel);
-                if (cmd == 8 || (cmd == 9 && vel == 0)) {
-                    // NOTE_OFF
-                    keyboard.release(MIDI_KEY_NAMES[note_number - 9 + MIDI_TRANSPOSE + transpose + pitchBends[channel]])
-                } else if (cmd == 9) {
-                    // NOTE_ON
-                    if (evt.target.volume !== undefined) vel *= evt.target.volume
-                    keyboard.press(MIDI_KEY_NAMES[note_number - 9 + MIDI_TRANSPOSE + transpose + pitchBends[channel]], vel / 127)
-                } else if (cmd == 11) {
-                    // CONTROL_CHANGE
-                    if (!keyboard.autoSustain) {
-                        if (note_number == 64) {
-                            if (vel >= 64) {
-                                keyboard.sustainDown()
-                            } else {
-                                keyboard.sustainUp()
-                            }
-                        }
-                    }
-                } else if (cmd == 14) {
-                    var pitchMod = evt.data[1] + (evt.data[2] << 7) - 0x2000
-                    pitchMod = Math.round(pitchMod / 1000)
-                    pitchBends[channel] = pitchMod
-                }
-            }
-            function deviceInfo(dev) {
-                return {
-                    type: dev.type,
-                    //id: dev.id,
-                    manufacturer: dev.manufacturer,
-                    name: dev.name,
-                    version: dev.version,
-                    //connection: dev.connection,
-                    //state: dev.state,
-                    enabled: dev.enabled,
-                    volume: dev.volume
-                }
-            }
-            function updateDevices() {
-                var list = []
-                if (midi.inputs.size > 0) {
-                    var inputs = midi.inputs.values()
-                    for (var input_it = inputs.next(); input_it && !input_it.done; input_it = inputs.next()) {
-                        var input = input_it.value
-                        list.push(deviceInfo(input))
-                    }
-                }
-                if (midi.outputs.size > 0) {
-                    var outputs = midi.outputs.values()
-                    for (var output_it = outputs.next(); output_it && !output_it.done; output_it = outputs.next()) {
-                        var output = output_it.value
-                        list.push(deviceInfo(output))
-                    }
-                }
-                var new_json = JSON.stringify(list)
-                if (new_json !== devices_json) {
-                    devices_json = new_json
-                    sendDevices()
-                }
-            }
-            function plug() {
-                if (midi.inputs.size > 0) {
-                    var inputs = midi.inputs.values()
-                    for (var input_it = inputs.next(); input_it && !input_it.done; input_it = inputs.next()) {
-                        var input = input_it.value
-                        //input.removeEventListener("midimessage", midimessagehandler);
-                        //input.addEventListener("midimessage", midimessagehandler);
-                        input.onmidimessage = midimessagehandler
-                        if (input.enabled !== false) {
-                            input.enabled = true
-                        }
-                        if (typeof input.volume === 'undefined') {
-                            input.volume = 1.0
-                        }
-                        //console.log("input", input);
-                    }
-                }
-                if (midi.outputs.size > 0) {
-                    var outputs = midi.outputs.values()
-                    for (var output_it = outputs.next(); output_it && !output_it.done; output_it = outputs.next()) {
-                        var output = output_it.value
-                        //output.enabled = false; // edit: don't touch
-                        if (typeof output.volume === 'undefined') {
-                            output.volume = 1.0
-                        }
-                        //console.log("output", output);
-                    }
-                    let messageBuffer = new Uint8Array(3)
-                    gMidiOutTest = function (note_name, vel, delay_ms, participantId) {
-                        if (!gOutputOwnNotes && participantId === gClient.participantId) return
-                        var note_number = MIDI_KEY_NAMES.indexOf(note_name)
-                        if (note_number == -1) return
-                        note_number = note_number + 9 - MIDI_TRANSPOSE
-                        var outputs = midi.outputs.values()
-                        for (var output_it = outputs.next(); output_it && !output_it.done; output_it = outputs.next()) {
-                            try {
-                                var output = output_it.value
-                                if (output.enabled) {
-                                    var v = (output.volume !== undefined ? vel * output.volume : vel) | 0
-                                    delay_ms ??= 0
-                                    if (output.volume !== undefined) v *= output.volume
-                                    // change status byte based on player ID!
-                                    let channel = participantChannel[participantId]
-                                    let status  = (v <= 0 ? 0x80 : 0x90) | (channel == 9 ? (channel + 1) & 0xf : channel)
-                                    messageBuffer[0] = status
-                                    messageBuffer[1] = note_number
-                                    messageBuffer[2] = v
-                                    output.send(messageBuffer, performance.now() + delay_ms)
-                                }
-                            } catch (err) {
-                                console.error(err)
-                                continue
-                            }
-                        }
-                    }
-                }
-                showConnections(false)
-                updateDevices()
-            }
-            midi.addEventListener('statechange', function (evt) {
-                if (evt instanceof MIDIConnectionEvent) {
-                    plug()
-                }
-            })
-            plug()
-            var connectionsNotification
-            function showConnections(sticky) {
+    rebuildParticipantChannels();
+    /*
+    function showConnections(sticky) {
                 //if(document.getElementById("Notification-MIDI-Connections"))
                 //sticky = 1; // todo: instead,
                 var inputs_ul = document.createElement('ul')
-                let midiToggles = JSON.parse(localStorage['hm.midiToggles'] ?? '{}')
+                let midiToggles = JSON.parse(localStorage['hm.midiToggles'] ?? '{"inputs":{},"outputs":{}}')
                 if (midi.inputs.size > 0) {
                     var inputs = midi.inputs.values()
                     for (var input_it = inputs.next(); input_it && !input_it.done; input_it = inputs.next()) {
@@ -3846,12 +3707,156 @@ $(function() {
                     target: '#midi-btn'
                 })
             }
+                */
+    let asyncPause = ms => new Promise(ret => setTimeout(ret, ms))
+    let gMidi = {
+        access : null,
+        inputs : [],
+        outputs: [],
+        messageBuffer: new Uint8Array(3),
+        connectionsNotif: null,
+        async noteOn(note, vel, delay, part) {
+            if (this.outputs.length === 0)
+                return false
+            let noteNum = MIDI_KEY_NAMES.indexOf(note)
+            if (noteNum == -1) 
+                return false
+            noteNum = noteNum + 9 - MIDI_TRANSPOSE
+            if (delay > 0)
+                await asyncPause(delay)
+            for (let output of this.outputs) {
+                if (!output.enabled)
+                    continue
+                let channel = participantChannel[part]
+                let status  = (vel <= 0 ? 0x80 : 0x90) | (channel == 9 ? (channel + 1) & 0xf : channel)
+                this.messageBuffer[0] = status
+                this.messageBuffer[1] = noteNum
+                this.messageBuffer[2] = vel
+                output.port.send(this.messageBuffer)
+            }
+            return true
+        },
+        async noteOff(note, delay, part) {
+            if (this.outputs.length === 0)
+                return false
+            let noteNum = MIDI_KEY_NAMES.indexOf(note)
+            if (noteNum == -1) 
+                return false
+            noteNum = noteNum + 9 - MIDI_TRANSPOSE
+            if (delay > 0)
+                await asyncPause(delay)
+            for (let output of this.outputs) {
+                if (!output.enabled)
+                    continue
+                let channel = participantChannel[part]
+                let status  = 0x80 | (channel == 9 ? (channel + 1) & 0xf : channel)
+                this.messageBuffer[0] = status
+                this.messageBuffer[1] = noteNum
+                this.messageBuffer[2] = 0
+                output.port.send(this.messageBuffer)
+            }
+            return true
+        },
+        showConnections(sticky) {
+            //if(document.getElementById("Notification-MIDI-Connections"))
+            //sticky = 1; // todo: instead,
+            var inputs_ul = document.createElement('ul')
+            let midiToggles = JSON.parse(localStorage['hm.midiToggles'] ?? '{"inputs":{},"outputs":{}}')
+            if (this.inputs.length > 0) {
+                for (let input of this.inputs) {
+                    var li = document.createElement('li')
+                    li.classList.add('connection')
+                    if (input.enabled) {
+                        li.classList.add('enabled')
+                    }
+                    li.textContent = input.port.name
+                    li.addEventListener('click', e => {
+                        input.enabled = !input.enabled
+                        if (!midiToggles.inputs)
+                            midiToggles.inputs = {}
+                        midiToggles.inputs[input.port.name] = input.enabled
+                        localStorage['hm.midiToggles'] = JSON.stringify(midiToggles)
+                        e.target.classList.toggle('enabled')
+                    })
+                    $(inputs_ul).append(li)
+                }
+            } else {
+                inputs_ul.textContent = '(none)'
+            }
+            var outputs_ul = document.createElement('ul')
+            if (this.outputs.length > 0) {
+                for (let output of this.outputs) {
+                    var li = document.createElement('li')
+                    li.classList.add('connection')
+                    if (output.enabled) {
+                        li.classList.add('enabled')
+                    }
+                    li.textContent = output.port.name
+                    li.addEventListener('click', e => {
+                        output.enabled = !output.enabled
+                        if (!midiToggles.outputs)
+                            midiToggles.outputs = {}
+                        midiToggles.outputs[output.port.name] = output.enabled
+                        localStorage['hm.midiToggles'] = JSON.stringify(midiToggles)
+                        e.target.classList.toggle('enabled')
+                    })
+                    $(outputs_ul).append(li)
+                }
+            } else {
+                outputs_ul.textContent = '(none)'
+            }
+            outputs_ul.setAttribute('translated', '')
+            inputs_ul.setAttribute('translated', '')
+            let div = document.createElement('div')
+            let h1_inputs = document.createElement('h1')
+            let h1_outputs = document.createElement('h1')
+            h1_inputs.textContent = 'Inputs'
+            $(div).append(h1_inputs)
+            $(div).append(inputs_ul)
+            h1_outputs.textContent = 'Outputs'
+            $(div).append(h1_outputs)
+            $(div).append(outputs_ul)
+            this.connectionsNotif = new SiteNotification({
+                id: 'MIDI-Connections',
+                title: 'MIDI Connections',
+                duration: sticky ? '-1' : '4500',
+                html: div,
+                target: '#midi-btn'
+            })
+        }
+    };
+    (async function () {
+        if (navigator.requestMIDIAccess) {
+            let midi = await navigator.requestMIDIAccess()
+            let midiToggles = JSON.parse(localStorage['hm.midiToggles'] ?? '{"inputs":{},"outputs":{}}')
+            gMidi.access  = midi
+            gMidi.inputs  = midi.inputs .values().toArray().map(a => ({ enabled: midiToggles.inputs[a.name] ?? true, port: a }))
+            gMidi.outputs = midi.outputs.values().toArray().map(a => ({ enabled: midiToggles.outputs[a.name] ?? false, port: a }))
+            for (let input of gMidi.inputs) {
+                input.port.addEventListener('midimessage', e => {
+                    let status  = e.data[0]
+                    let opcode  = status >> 0x4
+                    let channel = status &  0xf
+                    switch (opcode) {
+                        case 0x09: // note event
+                        case 0x08:
+                            let note = e.data[1]
+                            let vel  = e.data[2]
+                            if (opcode == 0x08 || vel == 0) // note off
+                                keyboard.release(MIDI_KEY_NAMES[note - 9 + MIDI_TRANSPOSE + transpose + pitchBends[channel]])
+                            else // note on
+                                keyboard.press(MIDI_KEY_NAMES[note - 9 + MIDI_TRANSPOSE + transpose + pitchBends[channel]], vel / 127)
+                            break
+                    }
+                })
+            }
             document.getElementById('midi-btn').addEventListener('click', function (evt) {
-                if (!document.getElementById('Notification-MIDI-Connections')) showConnections(true)
+                if (!document.getElementById('Notification-MIDI-Connections')) gMidi.showConnections(true)
                 else {
-                    connectionsNotification.close()
+                    gMidi.connectionsNotif.close()
                 }
             })
+            gMidi.showConnections(false)
         }
     })()
     // bug supply
@@ -3914,12 +3919,13 @@ $(function() {
         pressSustain: ::keyboard.sustainDown,
         releaseSustain: ::keyboard.sustainUp,
         keyboard,
+        midi: gMidi,
         addons: {
             hyperMod: gHyperMod
         },
         piano: gPiano,
         client: gClient,
-        chat: chat,
+        chat,
         noteQuota: gNoteQuota,
         normalNoteQuotaParams,
         soundSelector: gSoundSelector

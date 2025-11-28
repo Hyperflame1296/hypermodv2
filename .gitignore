@@ -138,4 +138,5 @@ dist
 # hmv2 stuff
 /package.json
 /package-lock.json
+src/script_backup.js
 .vscode/

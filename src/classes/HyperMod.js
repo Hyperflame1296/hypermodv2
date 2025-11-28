@@ -472,16 +472,27 @@ class HyperMod {
         $(window).keydown(e => {
             switch (e.code) {
                 case 'KeyH':
-                    let div = $('.hypermod#main-menu')
-                    if ($('.chatting').length == 0)
-                        div[0].style.display == 'block' ?
-                            div.css({
-                                display: 'none'
-                            })
-                        :
-                            div.css({
-                                display: 'block'
-                            })
+                    let div = $('.hypermod#main-menu, .hypermod#tabs')
+                    div.each((i, e) => {
+                        if (e.id === 'tabs')
+                            e.style.display == 'flex' ?
+                                $(e).css({
+                                    display: 'none'
+                                })
+                            :
+                                $(e).css({
+                                    display: 'flex'
+                                })
+                        else
+                            e.style.display == 'block' ?
+                                $(e).css({
+                                    display: 'none'
+                                })
+                            :
+                                $(e).css({
+                                    display: 'block'
+                                })
+                    })
                     break
             }
         })
