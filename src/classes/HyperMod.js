@@ -473,6 +473,8 @@ class HyperMod {
             switch (e.code) {
                 case 'KeyH':
                     let div = $('.hypermod#main-menu, .hypermod#tabs')
+                    if ($('.chatting').length != 0)
+                        return
                     div.each((i, e) => {
                         if (e.id === 'tabs')
                             e.style.display == 'flex' ?
