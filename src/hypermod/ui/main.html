@@ -2,6 +2,9 @@
     <div class='hypermod active' id='mpp-tab'>
         MPP
     </div>
+    <div class='hypermod' id='midi-io-tab'>
+        MIDI I/O
+    </div>
     <div class='hypermod' id='player-tab'>
         Player
     </div>
@@ -34,6 +37,13 @@
                     <div class='hypermod hm-button' id='reset-url-button'>Reset URL</div>
                 </div>
                 <div class='hypermod hm-button' id='reconnect-button'>Reconnect</div>
+            </div>
+            <div class='hypermod hm-section' id='midi-io-tab-content'>
+                <div class='hypermod' id='midi-output-velocity-threshold-c' title='The minimum velocity at which notes can be output.'>
+                    <label for='midi-output-velocity-threshold'>MIDI output velocity threshold:</label>
+                    <input class='hypermod hm-slider' type='range' data-setting='midiOutputVelocityThreshold' id='midi-output-velocity-threshold' min='0' max='50' value='0'>
+                    <span class='hypermod' data-setting='midiOutputVelocityThreshold'>0</span>
+                </div>
             </div>
             <div class='hypermod hm-section' id='player-tab-content'>
                 <div class='hypermod' id='enable-client-side-playback-switch-c' title='MIDI playback will only be heard on your end.'>

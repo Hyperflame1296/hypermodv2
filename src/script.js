@@ -121,6 +121,7 @@ $(function() {
             this.volume = 0.6
             this.sounds = {}
             this.paused = true
+            this.voices = 0
             return this
         }
         load(id, url, cb) {}
@@ -161,8 +162,8 @@ $(function() {
             this.limiterNode.threshold.value = -10
             this.limiterNode.knee.value = 0
             this.limiterNode.ratio.value = 20
-            this.limiterNode.attack.value = 0
-            this.limiterNode.release.value = 0.1
+            this.limiterNode.attack.value = 0.002
+            this.limiterNode.release.value = 0.08553
             this.limiterNode.connect(this.masterGain)
 
             // for synth mix
@@ -205,6 +206,8 @@ $(function() {
             if (this.paused) return
             if (!this.sounds.hasOwnProperty(id)) return
             if (this.volume <= 0 || gHyperMod.lsSettings.disableAudioEngine) return
+            if (!this.playings[id])
+                this.playings[id] = []
             var source = this.context.createBufferSource()
             source.buffer = this.sounds[id]
             var gain = this.context.createGain()
@@ -213,20 +216,22 @@ $(function() {
             gain.connect(this.pianoGain)
             source.start(time)
             // Patch from ste-art remedies stuttering under heavy load
-            if (this.playings[id]) {
-                let playing = this.playings[id]
-                playing.gain.gain.setValueAtTime(playing.gain.gain.value, time)
-                playing.gain.gain.linearRampToValueAtTime(0.0, time + 0.2)
-                playing.source.stop(time + 0.21)
-                if (enableSynth && playing.voice) {
-                    playing.voice.stop(time)
+            if (this.playings[id].length > 0 || this.voices > 50) {
+                let playing = this.playings[id].shift()
+                if (playing) {
+                    playing.source.stop(time)
+                    if (enableSynth && playing.voice) {
+                        playing.voice.stop(time)
+                    }
                 }
+                this.voices--
             }
-            this.playings[id] = { source: source, gain: gain, part_id: part_id }
-
+            let playing = { source, gain, part_id }
             if (enableSynth) {
                 this.playings[id].voice = new SynthVoice(id, time)
             }
+            this.playings[id].push(playing)
+            this.voices++
         }
         play(id, vol, delay_ms, part_id) {
             if (!this.sounds.hasOwnProperty(id)) return
@@ -254,18 +259,22 @@ $(function() {
         }
         actualStop(id, time, part_id) {
             if (this.volume <= 0 || gHyperMod.lsSettings.disableAudioEngine) return
-            if (this.playings.hasOwnProperty(id) && this.playings[id] && this.playings[id].part_id === part_id) {
-                var gain = this.playings[id].gain.gain
-                gain.setValueAtTime(gain.value, time)
-                gain.linearRampToValueAtTime(gain.value * 0.1, time + 0.16)
-                gain.linearRampToValueAtTime(0.0, time + 0.4)
-                this.playings[id].source.stop(time + 0.41)
+            if (!this.playings[id])
+                this.playings[id] = []
+            if (id in this.playings && this.playings[id]) {
+                let playing = this.playings[id].shift()
+                if (playing && playing.part_id === part_id) {
+                    var gain = playing.gain.gain
+                    gain.setValueAtTime(gain.value, time)
+                    gain.linearRampToValueAtTime(gain.value * 0.1, time + 0.16)
+                    gain.linearRampToValueAtTime(0.0, time + 0.4)
+                    playing.source.stop(time + 0.41)
 
-                if (this.playings[id].voice) {
-                    this.playings[id].voice.stop(time)
+                    if (playing.voice) {
+                        playing.voice.stop(time)
+                    }
+                    this.voices--
                 }
-
-                this.playings[id] = null
             }
         }
         stop(id, delay_ms, part_id) {
@@ -3545,6 +3554,9 @@ $(function() {
         }
     }
     MIDI_KEY_NAMES.push('c7')
+    let MIDI_KEY_MAP = Object.fromEntries(
+        MIDI_KEY_NAMES.map((name, i) => [name, i])
+    );
 
     var devices_json = '[]'
     function sendDevices() {
@@ -3708,53 +3720,63 @@ $(function() {
                 })
             }
                 */
-    let asyncPause = ms => new Promise(ret => setTimeout(ret, ms))
     let gMidi = {
         access : null,
         inputs : [],
         outputs: [],
-        messageBuffer: new Uint8Array(3),
+        messageBuffer: [new Uint8Array(3), new Uint8Array(3)],
         connectionsNotif: null,
-        async noteOn(note, vel, delay, part) {
-            if (this.outputs.length === 0)
-                return false
-            let noteNum = MIDI_KEY_NAMES.indexOf(note)
-            if (noteNum == -1) 
-                return false
-            noteNum = noteNum + 9 - MIDI_TRANSPOSE
-            if (delay > 0)
-                await asyncPause(delay)
-            for (let output of this.outputs) {
-                if (!output.enabled)
-                    continue
-                let channel = participantChannel[part]
-                let status  = (vel <= 0 ? 0x80 : 0x90) | (channel == 9 ? (channel + 1) & 0xf : channel)
-                this.messageBuffer[0] = status
-                this.messageBuffer[1] = noteNum
-                this.messageBuffer[2] = vel
-                output.port.send(this.messageBuffer)
+        wait(fn, delay) {
+            if (delay > 0) {
+                setTimeout(() => {
+                    fn()
+                }, delay)
+            } else {
+                fn()
             }
-            return true
         },
-        async noteOff(note, delay, part) {
+        noteOn(note, vel, delay, part) {
             if (this.outputs.length === 0)
                 return false
-            let noteNum = MIDI_KEY_NAMES.indexOf(note)
-            if (noteNum == -1) 
+            if (vel <= gHyperMod.lsSettings.midiOutputVelocityThreshold)
+                return false
+            let noteNum = MIDI_KEY_MAP[note]
+            if (noteNum === undefined) 
                 return false
             noteNum = noteNum + 9 - MIDI_TRANSPOSE
-            if (delay > 0)
-                await asyncPause(delay)
-            for (let output of this.outputs) {
-                if (!output.enabled)
-                    continue
-                let channel = participantChannel[part]
-                let status  = 0x80 | (channel == 9 ? (channel + 1) & 0xf : channel)
-                this.messageBuffer[0] = status
-                this.messageBuffer[1] = noteNum
-                this.messageBuffer[2] = 0
-                output.port.send(this.messageBuffer)
-            }
+            this.wait(() => {
+                for (let output of this.outputs) {
+                    if (!output.enabled)
+                        continue
+                    let channel = participantChannel[part]
+                    let status  = (vel <= 0 ? 0x80 : 0x90) | (channel == 9 ? (channel + 1) & 0xf : channel)
+                    this.messageBuffer[0][0] = status
+                    this.messageBuffer[0][1] = noteNum
+                    this.messageBuffer[0][2] = vel
+                    output.port.send(this.messageBuffer[0])
+                }
+                return true
+            }, delay)
+        },
+        noteOff(note, delay, part) {
+            if (this.outputs.length === 0)
+                return false
+            let noteNum = MIDI_KEY_MAP[note]
+            if (noteNum === undefined) 
+                return false
+            noteNum = noteNum + 9 - MIDI_TRANSPOSE
+            this.wait(() => {
+                for (let output of this.outputs) {
+                    if (!output.enabled)
+                        continue
+                    let channel = participantChannel[part]
+                    let status  = 0x80 | (channel == 9 ? (channel + 1) & 0xf : channel)
+                    this.messageBuffer[1][0] = status
+                    this.messageBuffer[1][1] = noteNum
+                    this.messageBuffer[1][2] = 0
+                    output.port.send(this.messageBuffer[1])
+                }
+            }, delay)
             return true
         },
         showConnections(sticky) {
@@ -3950,7 +3972,7 @@ $(function() {
 
     class SynthVoice {
         constructor(note_name, time) {
-            var note_number = MIDI_KEY_NAMES.indexOf(note_name)
+            var note_number = MIDI_KEY_MAP[note_name]
             note_number = note_number + 9 - MIDI_TRANSPOSE
             var freq = Math.pow(2, (note_number - 69) / 12) * 440.0
             this.osc = context.createOscillator()

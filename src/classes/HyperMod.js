@@ -9,13 +9,15 @@ class HyperMod {
     player = new Player
     npsTracker = new NPSTracker
     currentFile
-    version = 'v0.2.0'
+    version = 'v0.2.0.27'
     defaultSettings = {
         // MPP section
         forceInfNoteQuota: true,
         disableAudioEngine: false,
         trackNPS: false,
         connectUrl: 'wss://mppclone.com',
+        // MIDI I/O section
+        midiOutputVelocityThreshold: 0,
         // Player section
         enableClientSidePlayback: false,
         enableChannelColors: true,
@@ -45,6 +47,8 @@ class HyperMod {
         disableAudioEngine: false,
         trackNPS: false,
         connectUrl: 'wss://mppclone.com',
+        // MIDI I/O section
+        midiOutputVelocityThreshold: 0,
         // Player section
         enableClientSidePlayback: false,
         enableChannelColors: true,
@@ -505,14 +509,14 @@ class HyperMod {
                 return
             switch (t.type) {
                 case 'checkbox':
-                    t.checked = this.settings[t.dataset.setting]
+                    t.checked = this.settings[t.dataset.setting] ?? false
                     break
                 case 'range':
-                    t.value = this.settings[t.dataset.setting].toString()
+                    t.value = this.settings[t.dataset.setting]?.toString() ?? '0'
                     let s = $(`span.hypermod[data-setting=${t.dataset.setting}]`)
                     s.html(t.value)
                 case 'text':
-                    t.value = this.settings[t.dataset.setting]
+                    t.value = this.settings[t.dataset.setting] ?? ''
                     break
             }
         })

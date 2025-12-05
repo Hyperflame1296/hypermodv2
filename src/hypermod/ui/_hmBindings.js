@@ -138,7 +138,7 @@
                 let g = e.target
                 if (!g.dataset.setting)
                     return
-                if (typeof hyperMod.settings[g.dataset.setting] === 'undefined')
+                if (!(g.dataset.setting in hyperMod.settings) && !(g.dataset.setting in hyperMod.defaultSettings))
                     return
                 let applyButton = $('.hypermod.hm-button#apply-button')
                 switch (g.type) {
@@ -156,7 +156,7 @@
                 let g = e.target
                 if (!g.dataset.setting)
                     return
-                if (typeof hyperMod.settings[g.dataset.setting] === 'undefined')
+                if (!(g.dataset.setting in hyperMod.settings) && !(g.dataset.setting in hyperMod.defaultSettings))
                     return
                 let applyButton = $('.hypermod.hm-button#apply-button')
                 switch (g.type) {
