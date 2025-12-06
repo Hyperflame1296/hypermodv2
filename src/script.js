@@ -50,7 +50,7 @@ $(function() {
             return -1
         }
     }
-
+    Notification.requestPermission()
     window.requestAnimationFrame =
         window.requestAnimationFrame ||
         window.mozRequestAnimationFrame ||
@@ -3329,6 +3329,10 @@ $(function() {
                     if (!tabIsActive) {
                         if (repliedMsg?.p?._id === gClient.user._id) {
                             document.title = `You have received a reply!`
+                            if (gHyperMod.lsSettings.sendNotifications && Notification.permission === 'granted')
+                                new Notification(`You have received a reply!`, {
+                                    body: `${msg.p.name} has replied to your message.`,
+                                })
                             youreReplied = true
                         }
                     }
@@ -3395,6 +3399,10 @@ $(function() {
                             if (!tabIsActive) {
                                 youreMentioned = true
                                 document.title = window.i18nextify.i18next.t('You were mentioned!')
+                                if (gHyperMod.lsSettings.sendNotifications && Notification.permission === 'granted')
+                                    new Notification(window.i18nextify.i18next.t('You were mentioned!'), {
+                                        body: `${msg.p.name} has mentioned you in chat.`,
+                                    })
                             }
                             return `<span class="mention" style="background-color: ${user.color};">${nick}</span>`
                         } else return `@${nick}`

@@ -9,12 +9,13 @@ class HyperMod {
     player = new Player
     npsTracker = new NPSTracker
     currentFile
-    version = 'v0.2.0.27'
+    version = 'v0.2.0.28'
     defaultSettings = {
         // MPP section
         forceInfNoteQuota: true,
         disableAudioEngine: false,
         trackNPS: false,
+        sendNotifications: true,
         connectUrl: 'wss://mppclone.com',
         // MIDI I/O section
         midiOutputVelocityThreshold: 0,
@@ -46,6 +47,7 @@ class HyperMod {
         forceInfNoteQuota: true,
         disableAudioEngine: false,
         trackNPS: false,
+        sendNotifications: true,
         connectUrl: 'wss://mppclone.com',
         // MIDI I/O section
         midiOutputVelocityThreshold: 0,
