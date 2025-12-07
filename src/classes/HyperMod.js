@@ -9,7 +9,7 @@ class HyperMod {
     player = new Player
     npsTracker = new NPSTracker
     currentFile
-    version = 'v0.2.0.30'
+    version = 'v0.2.0.31'
     defaultSettings = {
         // MPP section
         forceInfNoteQuota: true,
