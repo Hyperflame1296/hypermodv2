@@ -3078,6 +3078,7 @@ $(function() {
                 type: 'typing'
             }
         }])
+        //typingUsers.add(gClient.participantId) // debugging
     }
     function stopTyping() {
         gClient.sendArray([{ 
@@ -3091,6 +3092,7 @@ $(function() {
                 stop: true
             }
         }])
+        //typingUsers.delete(gClient.participantId) // debugging
     }
     gClient.on('custom', msg => {
         if (msg.data.m === 'hypermod') {
@@ -3208,6 +3210,8 @@ $(function() {
                     } else {
                         chat.send(message)
                         $(this).val('')
+                        stopTyping()
+                        updateTypingStatus()
                         setTimeout(function () {
                             chat.blur()
                         }, 100)
