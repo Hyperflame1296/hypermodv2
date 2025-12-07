@@ -138,7 +138,7 @@ $(function() {
         constructor() {
             super()
             this.threshold = 0
-            if (!gHyperMod.lsSettings.removeWorkerTimer) {
+            if (!(gHyperMod.lsSettings?.removeWorkerTimer ?? true)) {
                 this.worker = new Worker('threads/timer.js')
                 this.worker.onmessage = e => {
                     if (e.data.args)
@@ -205,7 +205,7 @@ $(function() {
             //the old play(), but with time insted of delay_ms.
             if (this.paused) return
             if (!this.sounds.hasOwnProperty(id)) return
-            if (this.volume <= 0 || gHyperMod.lsSettings.disableAudioEngine) return
+            if (this.volume <= 0 || (gHyperMod.lsSettings?.disableAudioEngine ?? false)) return
             if (!this.playings[id])
                 this.playings[id] = []
             var source = this.context.createBufferSource()
@@ -235,12 +235,12 @@ $(function() {
         }
         play(id, vol, delay_ms, part_id) {
             if (!this.sounds.hasOwnProperty(id)) return
-            if (this.volume <= 0 || gHyperMod.lsSettings.disableAudioEngine) return
+            if (this.volume <= 0 || (gHyperMod.lsSettings?.disableAudioEngine ?? false)) return
             var time = this.context.currentTime + delay_ms / 1000 //calculate time on note receive.
             var delay = delay_ms - this.threshold
             if (delay <= 0) this.actualPlay(id, vol, time, part_id)
             else {
-                if (gHyperMod.lsSettings.removeWorkerTimer || !this.worker)
+                if ((gHyperMod.lsSettings?.removeWorkerTimer ?? true) || !this.worker)
                     setTimeout(() => {
                         this.actualPlay(id, vol, time, part_id)
                     }, delay)
@@ -258,7 +258,7 @@ $(function() {
             }
         }
         actualStop(id, time, part_id) {
-            if (this.volume <= 0 || gHyperMod.lsSettings.disableAudioEngine) return
+            if (this.volume <= 0 || (gHyperMod.lsSettings?.disableAudioEngine ?? false)) return
             if (!this.playings[id])
                 this.playings[id] = []
             if (id in this.playings && this.playings[id]) {
@@ -278,12 +278,12 @@ $(function() {
             }
         }
         stop(id, delay_ms, part_id) {
-            if (this.volume <= 0 || gHyperMod.lsSettings.disableAudioEngine) return
+            if (this.volume <= 0 || (gHyperMod.lsSettings?.disableAudioEngine ?? false)) return
             var time = this.context.currentTime + delay_ms / 1000
             var delay = delay_ms - this.threshold
             if (delay <= 0) this.actualStop(id, time, part_id)
             else {
-                if (gHyperMod.lsSettings.removeWorkerTimer || !this.worker)
+                if ((gHyperMod.lsSettings?.removeWorkerTimer ?? true) || !this.worker)
                     setTimeout(() => {
                         this.actualStop(id, time, part_id)
                     }, delay)
@@ -502,7 +502,7 @@ $(function() {
             this.whiteKeyRender.width = this.whiteKeyWidth
             this.whiteKeyRender.height = this.height + 10
             var ctx = this.whiteKeyRender.getContext('2d')
-            if (ctx.createLinearGradient && !gHyperMod.lsSettings.removeKeyGradients) {
+            if (ctx.createLinearGradient && !(gHyperMod.lsSettings?.removeKeyGradients ?? false)) {
                 var gradient = ctx.createLinearGradient(0, 0, 0, this.whiteKeyHeight)
                 gradient.addColorStop(0, '#eee')
                 gradient.addColorStop(0.75, '#fff')
@@ -534,7 +534,7 @@ $(function() {
             this.blackKeyRender.width = this.blackKeyWidth + 10
             this.blackKeyRender.height = this.blackKeyHeight + 10
             var ctx = this.blackKeyRender.getContext('2d')
-            if (ctx.createLinearGradient && !gHyperMod.lsSettings.removeKeyGradients) {
+            if (ctx.createLinearGradient && !(gHyperMod.lsSettings?.removeKeyGradients ?? false)) {
                 var gradient = ctx.createLinearGradient(0, 0, 0, this.blackKeyHeight)
                 gradient.addColorStop(0, '#000')
                 gradient.addColorStop(1, '#444')
@@ -560,7 +560,7 @@ $(function() {
                 this.blackKeyHeight - ctx.lineWidth
             )
 
-            if (!gHyperMod.lsSettings.removeKeyShadows) {
+            if (!(gHyperMod.lsSettings?.removeKeyShadows ?? false)) {
                 // prerender shadows
                 this.shadowRender = []
                 var y = -this.canvas.height * 2
@@ -628,19 +628,19 @@ $(function() {
             var timePlayedEnd = now - 100
             var timeBlipEnd = now - 1000
 
-            !gHyperMod.lsSettings.removeKeyFade ? this.ctx.save() : void 0
+            !(gHyperMod.lsSettings?.removeKeyFade ?? false) ? this.ctx.save() : void 0
             this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height)
             // draw all keys
             for (var j = 0; j < 2; j++) {
-                !gHyperMod.lsSettings.removeKeyFade ? this.ctx.globalAlpha = 1.0 : void 0
-                !gHyperMod.lsSettings.removeKeyShadows && this.shadowRender ? this.ctx.drawImage(this.shadowRender[j], 0, 0) : void 0
+                !(gHyperMod.lsSettings?.removeKeyFade ?? false) ? this.ctx.globalAlpha = 1.0 : void 0
+                !(gHyperMod.lsSettings?.removeKeyShadows ?? false) && this.shadowRender ? this.ctx.drawImage(this.shadowRender[j], 0, 0) : void 0
                 var sharp = j ? true : false
                 for (var i in this.piano.keys) {
                     if (!this.piano.keys.hasOwnProperty(i)) continue
                     var key = this.piano.keys[i]
                     if (key.sharp != sharp) continue
 
-                    if (!gHyperMod.lsSettings.removeKeyFade)
+                    if (!(gHyperMod.lsSettings?.removeKeyFade ?? false))
                         if (!key.loaded) {
                             this.ctx.globalAlpha = 0.2
                         } else if (key.timeLoaded > timeLoadedEnd) {
@@ -650,7 +650,7 @@ $(function() {
                         }
                     
                     var y = 0
-                    if (key.timePlayed > timePlayedEnd && !gHyperMod.lsSettings.removeNoteBouncing) {
+                    if (key.timePlayed > timePlayedEnd && !(gHyperMod.lsSettings?.removeNoteBouncing ?? false)) {
                         y = Math.floor(this.keyMovement - ((now - key.timePlayed) / 100) * this.keyMovement)
                     }
                     var x = Math.floor(
@@ -700,14 +700,14 @@ $(function() {
                         let keynameNoOctave = keyName.slice(0, -1)
                         if (highlightScale.includes(keynameNoOctave)) {
                             let prev = this.ctx.globalAlpha
-                            !gHyperMod.lsSettings.removeKeyFade ? this.ctx.globalAlpha = 0.3 : void 0
+                            !(gHyperMod.lsSettings?.removeKeyFade ?? false) ? this.ctx.globalAlpha = 0.3 : void 0
                             this.ctx.fillStyle = '#0f0'
                             if (key.sharp) {
                                 this.ctx.fillRect(x, y, this.blackKeyWidth, this.blackKeyHeight)
                             } else {
                                 this.ctx.fillRect(x, y, this.whiteKeyWidth, this.whiteKeyHeight)
                             }
-                            !gHyperMod.lsSettings.removeKeyFade ? this.ctx.globalAlpha = prev : void 0
+                            !(gHyperMod.lsSettings?.removeKeyFade ?? false) ? this.ctx.globalAlpha = prev : void 0
                         }
                     }
 
@@ -740,7 +740,7 @@ $(function() {
                     }
                 }
             }
-            !gHyperMod.lsSettings.removeKeyFade ? this.ctx.restore() : void 0
+            !(gHyperMod.lsSettings?.removeKeyFade ?? false) ? this.ctx.restore() : void 0
         }
         renderNoteLyrics() {
             // render lyric
@@ -751,7 +751,7 @@ $(function() {
                 var lyric_y = this.whiteKeyHeight + 1
                 this.ctx.fillStyle = key.lyric.color
                 var alpha = this.ctx.globalAlpha
-                !gHyperMod.lsSettings.removeKeyFade ? this.ctx.globalAlpha = alpha - ((now - key.lyric.time) / 1000) * alpha : void 0
+                !(gHyperMod.lsSettings?.removeKeyFade ?? false) ? this.ctx.globalAlpha = alpha - ((now - key.lyric.time) / 1000) * alpha : void 0
                 this.ctx.fillRect(x, y, 10, 10)
             }
         }
@@ -965,7 +965,7 @@ $(function() {
             return this
         }
         bufferPlay(note, vol, participant, delay_ms=0) {
-            if (gHyperMod.lsSettings.trackNPS) gHyperMod.npsTracker.noteOn();
+            if (gHyperMod.lsSettings?.trackNPS ?? false) gHyperMod.npsTracker.noteOn();
             if (!this.keys.hasOwnProperty(note) || !participant) return;
             const key = this.keys[note];
             key.lastHitTime = performance.now() + delay_ms;
@@ -1034,7 +1034,7 @@ $(function() {
                         for (let j = 0; j < k._blipCount; j++)
                             k.blips.push(k._blipBuffer[(k._blipHead + j) % limit]);
 
-                        if (!gHyperMod.lsSettings.removeNameBouncing && ev.participant.nameDiv && !ev.participant.nameDiv.__isBouncing) {
+                        if (!(gHyperMod.lsSettings?.removeNameBouncing ?? false) && ev.participant.nameDiv && !ev.participant.nameDiv.__isBouncing) {
                             const div = ev.participant.nameDiv;
                             div.__isBouncing = true;
                             div.classList.add("play");
@@ -1054,10 +1054,10 @@ $(function() {
             }
         }
         play(note, vol, participant, delay_ms=0) {
-            if (gHyperMod.lsSettings.trackNPS) gHyperMod.npsTracker.noteOn()
+            if (gHyperMod.lsSettings?.trackNPS ?? false) gHyperMod.npsTracker.noteOn()
             if (!this.keys.hasOwnProperty(note) || !participant) return
             var key = this.keys[note]
-            if (key.loaded && this.audio.volume > 0 && !gHyperMod.lsSettings.disableAudioEngine) this.audio.play(key.note, vol, delay_ms, participant.id)
+            if (key.loaded && this.audio.volume > 0 && !(gHyperMod.lsSettings?.disableAudioEngine ?? false)) this.audio.play(key.note, vol, delay_ms, participant.id)
             gMidi.noteOn(key.note, vol * 100, delay_ms, participant.id)
             // redunant, but idc
             if (delay_ms <= 0) {
@@ -3171,7 +3171,7 @@ $(function() {
         })
         $('#chat-input').on('input', e => {
             if (!gClient.isConnected()) return
-            if (!gHyperMod.lsSettings.showUsersWhenTyping) return
+            if (!(gHyperMod.lsSettings.showUsersWhenTyping ?? true)) return
             if (e.target.value.length == 0) {
                 stopTyping()
                 if (gTypingTimeout) {
@@ -3417,7 +3417,7 @@ $(function() {
                     if (!tabIsActive) {
                         if (repliedMsg?.p?._id === gClient.user._id) {
                             document.title = `You have received a reply!`
-                            if (gHyperMod.lsSettings.sendNotifications && Notification.permission === 'granted')
+                            if ((gHyperMod.lsSettings?.sendNotifications ?? true) && Notification.permission === 'granted')
                                 new Notification(`You have received a reply!`, {
                                     body: `${msg.p.name} has replied to your message.`,
                                 })
@@ -3487,7 +3487,7 @@ $(function() {
                             if (!tabIsActive) {
                                 youreMentioned = true
                                 document.title = window.i18nextify.i18next.t('You were mentioned!')
-                                if (gHyperMod.lsSettings.sendNotifications && Notification.permission === 'granted')
+                                if ((gHyperMod.lsSettings.sendNotifications ?? true) && Notification.permission === 'granted')
                                     new Notification(window.i18nextify.i18next.t('You were mentioned!'), {
                                         body: `${msg.p.name} has mentioned you in chat.`,
                                     })
@@ -3838,7 +3838,7 @@ $(function() {
         noteOn(note, vel, delay, part) {
             if (this.outputs.length === 0)
                 return false
-            if (vel <= gHyperMod.lsSettings.midiOutputVelocityThreshold)
+            if (vel <= (gHyperMod.lsSettings.midiOutputVelocityThreshold ?? 0))
                 return false
             let noteNum = MIDI_KEY_MAP[note]
             if (noteNum === undefined) 
