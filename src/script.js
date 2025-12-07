@@ -1311,6 +1311,7 @@ $(function() {
                 document.removeEventListener('click', user_interact)
                 gPiano.audio.resume()
             }
+            gClient.sendArray([{ m: '+custom' }]) // subscribe to custom messages
             document.addEventListener('click', user_interact)
             if (gClient.permissions.clearChat) {
                 $('#clearchat-btn').show()
@@ -3045,7 +3046,66 @@ $(function() {
     // chatctor
 
     ////////////////////////////////////////////////////////////////
-
+    let gTypingTimeout
+    let typingUsers = new Set()
+    function listFormat(list) {
+        if (!Array.isArray(list) && typeof list[Symbol.iterator] === 'function') {
+            list = Array.from(list)
+        }
+        if (list.length == 0) return ''
+        else if (list.length == 1) return list[0]
+        else if (list.length == 2) return list[0] + ' and ' + list[1]
+        else return list.slice(0, -1).join(', ') + ', and ' + list[list.length - 1]
+    }
+    function updateTypingStatus() {
+        let element = $('#typing-container.hypermod')
+        if (typingUsers.size == 0) {
+            element.hide()
+        } else {
+            element.show()
+            let text = listFormat(typingUsers.values().map(id => gClient.findParticipantById(id).name))
+            element.text(typingUsers.size == 1 ? text + ' is typing...' : text + ' are typing...')
+        }
+    }
+    function startTyping() {
+        gClient.sendArray([{ 
+            m: 'custom',
+            target: {
+                mode: 'subscribed'
+            },
+            data: {
+                m: 'hypermod',
+                type: 'typing'
+            }
+        }])
+    }
+    function stopTyping() {
+        gClient.sendArray([{ 
+            m: 'custom',
+            target: {
+                mode: 'subscribed'
+            },
+            data: {
+                m: 'hypermod',
+                type: 'typing',
+                stop: true
+            }
+        }])
+    }
+    gClient.on('custom', msg => {
+        if (msg.data.m === 'hypermod') {
+            switch (msg.data.type) {
+                case 'typing':
+                    if (msg.data.stop) {
+                        typingUsers.delete(msg.p)
+                    } else {
+                        typingUsers.add(msg.p)
+                    }
+                    updateTypingStatus()
+                    break
+            }
+        }
+    })
     var chat = do {
         gClient.on('ch', function (msg) {
             if (msg.ch.settings.chat) {
@@ -3071,7 +3131,7 @@ $(function() {
             chat.receive(msg)
         })
 
-        $('#chat input').on('focus', function (evt) {
+        $('#chat-input').on('focus', function (evt) {
             releaseKeyboard()
             $('#chat').addClass('chatting')
             chat.scrollToBottom()
@@ -3101,15 +3161,39 @@ $(function() {
                     if (!gNoPreventDefault) evt.preventDefault()
                     evt.stopPropagation()
                 } else if (evt.keyCode == 13) {
-                    $('#chat input').focus()
+                    $('#chat-input').focus()
                 }
             } else if (!gModal && (evt.keyCode == 27 || evt.keyCode == 13)) {
-                $('#chat input').focus()
+                $('#chat-input').focus()
             }
         })
-        $('#chat input').on('keydown', function (evt) {
+        $('#chat-input').on('input', e => {
+            if (!gClient.isConnected()) return
+            if (!gHyperMod.lsSettings.showUsersWhenTyping) return
+            if (e.target.value.length == 0) {
+                stopTyping()
+                if (gTypingTimeout) {
+                    clearTimeout(gTypingTimeout)
+                    gTypingTimeout = undefined
+                }
+                return updateTypingStatus()
+            }
+            if (!gTypingTimeout) {
+                startTyping()
+                updateTypingStatus()
+            } else {
+                clearTimeout(gTypingTimeout)
+                gTypingTimeout = undefined
+            }
+            gTypingTimeout = setTimeout(() => {
+                stopTyping()
+                updateTypingStatus()
+                gTypingTimeout = undefined
+            }, 2000)
+        })
+        $('#chat-input').on('keydown', function (evt) {
             if (evt.keyCode == 13) {
-                if (MPP.client.isConnected()) {
+                if (gClient.isConnected()) {
                     var message = $(this).val()
                     if (message.length == 0) {
                         if (gIsDming) {
@@ -3229,7 +3313,7 @@ $(function() {
 
             blur: function () {
                 if ($('#chat').hasClass('chatting')) {
-                    $('#chat input').get(0).blur()
+                    $('#chat-input').get(0).blur()
                     $('#chat').removeClass('chatting')
                     chat.scrollToBottom()
                     captureKeyboard()
@@ -3597,7 +3681,11 @@ $(function() {
             participantChannel[keys[i]] = i & 0xf
     }
     gClient.on('participant added', rebuildParticipantChannels)
-    gClient.on('participant removed', rebuildParticipantChannels)
+    gClient.on('participant removed', e => {
+        rebuildParticipantChannels()
+        typingUsers.delete(e._id)
+        updateTypingStatus()
+    })
     rebuildParticipantChannels();
     /*
     function showConnections(sticky) {
@@ -3956,6 +4044,7 @@ $(function() {
         piano: gPiano,
         client: gClient,
         chat,
+        typingUsers,
         noteQuota: gNoteQuota,
         normalNoteQuotaParams,
         soundSelector: gSoundSelector

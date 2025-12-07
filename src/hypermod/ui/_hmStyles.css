@@ -4,6 +4,14 @@
         'DejaVu Sans',
         sans-serif;
 }
+#typing-container.hypermod {
+    width: 100%;
+    height: 15px;
+    font-size: 12px;
+    font-style: italic;
+    color: #ffffff7f;
+    display: none;
+}
 .hypermod#hypermod-container {
     position: fixed;
     top: 0;

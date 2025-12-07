@@ -14,6 +14,9 @@
     <div class='hypermod' id='visuals-tab'>
         Visuals
     </div>
+    <div class='hypermod' id='customization-tab'>
+        Customization
+    </div>
 </div>
 <div class='hypermod' id='main-menu' style='display: none'>
     <div class='hypermod' id='tab-content-wrap'>
@@ -32,8 +35,12 @@
                     <input class='hypermod hm-checkbox' type='checkbox' data-setting='trackNPS' id='track-nps-switch'>
                 </div>
                 <div class='hypermod' id='send-notifications-switch-c' title='Send desktop notifications for mentions and replies.'>
-                    <label for='send-notifications-switch'>Send Notifications:</label>
+                    <label for='send-notifications-switch'>Send notifications:</label>
                     <input class='hypermod hm-checkbox' type='checkbox' data-setting='sendNotifications' id='send-notifications-switch'>
+                </div>
+                <div class='hypermod' id='show-users-when-typing-switch-c' title='Show users when you begin typing.'>
+                    <label for='show-users-when-typing-switch'>Show users when you type:</label>
+                    <input class='hypermod hm-checkbox' type='checkbox' data-setting='showUsersWhenTyping' id='show-users-when-typing-switch'>
                 </div>
                 <div class='hypermod' id='ws-url-input-c' title='The MPP server to connect to.'>
                     <label for='ws-url-input'>WebSocket URL:</label>
@@ -150,6 +157,23 @@
                         <input class='hypermod hm-slider' type='range' data-setting='noteVisualizerInterval' id='note-visualizer-interval-slider' min='1' max='2000' value='125'>
                         <span class='hypermod' data-setting='noteVisualizerInterval'>125</span>
                     </div>
+                </div>
+            </div>
+            <div class='hypermod hm-section' id='customization-tab-content'>
+                <div class='hypermod' id='chat-blur-amount-c' title='How much the chat blurs background elements.'>
+                    <label for='chat-blur-amount-slider'>Chat blur amount:</label>
+                    <input class='hypermod hm-slider' type='range' data-setting='customization' data-subsetting='chatBlurAmount' min='0' max='15' value='5'>
+                    <span class='hypermod' data-setting='customization' data-subsetting='chatBlurAmount'>5</span>
+                </div>
+                <div class='hypermod' id='name-div-roundness-c' title='How rounded the corners of name divs are.'>
+                    <label for='name-div-roundness-slider'>Name div roundness:</label>
+                    <input class='hypermod hm-slider' type='range' data-setting='customization' data-subsetting='nameDivRoundness' min='0' max='10' value='2'>
+                    <span class='hypermod' data-setting='customization' data-subsetting='nameDivRoundness'>2</span>
+                </div>
+                <div class='hypermod' id='cursor-div-roundness-c' title='How rounded the corners of cursor divs are.'>
+                    <label for='cursor-div-roundness-slider'>Cursor div roundness:</label>
+                    <input class='hypermod hm-slider' type='range' data-setting='customization' data-subsetting='cursorDivRoundness' min='0' max='10' value='3'>
+                    <span class='hypermod' data-setting='customization' data-subsetting='cursorDivRoundness'>3</span>
                 </div>
             </div>
         </div>

@@ -9,13 +9,14 @@ class HyperMod {
     player = new Player
     npsTracker = new NPSTracker
     currentFile
-    version = 'v0.2.0.28'
+    version = 'v0.2.0.29'
     defaultSettings = {
         // MPP section
         forceInfNoteQuota: true,
         disableAudioEngine: false,
         trackNPS: false,
         sendNotifications: true,
+        showUsersWhenTyping: true,
         connectUrl: 'wss://mppclone.com',
         // MIDI I/O section
         midiOutputVelocityThreshold: 0,
@@ -40,40 +41,15 @@ class HyperMod {
         enableNoteVisualizer: false,
         noteVisualizerInterval: 125,
         noteVisualizerSpeed: 100,
-        enableNoteColors: true
+        enableNoteColors: true,
+        // customization section
+        customization: {
+            chatBlurAmount: 3, // in pixels
+            nameDivRoundness: 2, // in pixels
+            cursorDivRoundness: 3, // in pixels
+        }
     }
-    settings = {
-        // MPP section
-        forceInfNoteQuota: true,
-        disableAudioEngine: false,
-        trackNPS: false,
-        sendNotifications: true,
-        connectUrl: 'wss://mppclone.com',
-        // MIDI I/O section
-        midiOutputVelocityThreshold: 0,
-        // Player section
-        enableClientSidePlayback: false,
-        enableChannelColors: true,
-        // optimizations section
-        removeWorkerTimer: true,
-        removeNameBouncing: true,
-        removeNoteBouncing: true,
-        removeKeyShadows: true,
-        removeKeyGradients: false,
-        removeKeyFade: true,
-        enableBufferedBlips: false,
-        enableBlipLimit: true,
-        blipLimit: 8,
-        // visuals section
-        removeHyperModText: false,
-        removeRainbowGraphics: false,
-        enableFpsGraph: true,
-        fpsCalculationInterval: 125,
-        enableNoteVisualizer: false,
-        noteVisualizerInterval: 125,
-        noteVisualizerSpeed: 100,
-        enableNoteColors: true
-    }
+    settings = structuredClone(this.defaultSettings)
     channelColors = [
         '#ff0000',
         '#ff8800',
@@ -173,6 +149,9 @@ class HyperMod {
         this.getSettings()
         this.updateSettings()
         this.updateFileList()
+        for (let setting in this.lsSettings.customization) {
+            this.applyCustomizationSetting(setting)
+        }
         $(this.canvas).addClass('hypermod')
         let keys = ['a-1', 'as-1', 'b-1', 'c0', 'cs0', 'd0', 'ds0', 'e0', 'f0', 'fs0', 'g0', 'gs0', 'a0', 'as0', 'b0', 'c1', 'cs1', 'd1', 'ds1', 'e1', 'f1', 'fs1', 'g1', 'gs1', 'a1', 'as1', 'b1', 'c2', 'cs2', 'd2', 'ds2', 'e2', 'f2', 'fs2', 'g2', 'gs2', 'a2', 'as2', 'b2', 'c3', 'cs3', 'd3', 'ds3', 'e3', 'f3', 'fs3', 'g3', 'gs3', 'a3', 'as3', 'b3', 'c4', 'cs4', 'd4', 'ds4', 'e4', 'f4', 'fs4', 'g4', 'gs4', 'a4', 'as4', 'b4', 'c5', 'cs5', 'd5', 'ds5', 'e5', 'f5', 'fs5', 'g5', 'gs5', 'a5', 'as5', 'b5', 'c6', 'cs6', 'd6', 'ds6', 'e6', 'f6', 'fs6', 'g6', 'gs6', 'a6', 'as6', 'b6', 'c7']
         let p = typeof MPP !== 'undefined' ? MPP.client.getOwnParticipant() : undefined
@@ -357,6 +336,19 @@ class HyperMod {
         this.settings = localStorage['hm.settings'] ? JSON.parse(localStorage['hm.settings']) : this.defaultSettings
         this.lsSettings = structuredClone(this.settings)
     }
+    applyCustomizationSetting(setting) {
+        if (!(setting in this.lsSettings.customization))
+            return
+        let currentValue = getComputedStyle(document.documentElement)
+            .getPropertyValue(`--${setting}`)
+            .trim();
+        let suffix = ''
+        if (currentValue.endsWith('px')) suffix = 'px'
+        if (currentValue.endsWith('pt')) suffix = 'pt'
+        if (currentValue.endsWith('vw')) suffix = 'vw'
+        if (currentValue.endsWith('vh')) suffix = 'vh'
+        $('html').css(`--${setting}`, this.lsSettings.customization[setting] + suffix);
+    }
     updateFileList() {
         let list = $('ul.hypermod#files')
         list.empty()
@@ -509,16 +501,32 @@ class HyperMod {
         $('input.hypermod').each((i, t) => {
             if (!t.dataset.setting)
                 return
+            if (!(t.dataset.setting in this.defaultSettings))
+                return
             switch (t.type) {
                 case 'checkbox':
-                    t.checked = this.settings[t.dataset.setting] ?? false
+                    if (t.dataset.subsetting) {
+                        t.checked = this.settings[t.dataset.setting]?.[t.dataset.subsetting] ?? this.defaultSettings[t.dataset.setting]?.[t.dataset.subsetting]
+                    } else {
+                        t.checked = this.settings[t.dataset.setting] ?? this.defaultSettings[t.dataset.setting]
+                    }
                     break
                 case 'range':
-                    t.value = this.settings[t.dataset.setting]?.toString() ?? '0'
-                    let s = $(`span.hypermod[data-setting=${t.dataset.setting}]`)
-                    s.html(t.value)
+                    if (t.dataset.subsetting) {
+                        t.value = this.settings[t.dataset.setting]?.[t.dataset.subsetting]?.toString() ?? this.defaultSettings[t.dataset.setting]?.[t.dataset.subsetting]?.toString()
+                        let s = $(`span.hypermod[data-setting=${t.dataset.setting}][data-subsetting=${t.dataset.subsetting}]`)
+                        s.html(t.value)
+                    } else {
+                        t.value = this.settings[t.dataset.setting]?.toString() ?? this.defaultSettings[t.dataset.setting]?.toString()
+                        let s = $(`span.hypermod[data-setting=${t.dataset.setting}]`)
+                        s.html(t.value)
+                    }
                 case 'text':
-                    t.value = this.settings[t.dataset.setting] ?? ''
+                    if (t.dataset.subsetting) {
+                        t.value = this.settings[t.dataset.setting]?.[t.dataset.subsetting] ?? this.defaultSettings[t.dataset.setting]?.[t.dataset.subsetting]
+                    } else {
+                        t.value = this.settings[t.dataset.setting] ?? this.defaultSettings[t.dataset.setting]
+                    }
                     break
             }
         })

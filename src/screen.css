@@ -1,3 +1,8 @@
+:root {
+    --chatBlurAmount: 3px;
+    --nameDivRoundness: 2px;
+    --cursorDivRoundness: 3px;
+}
 * {
     image-rendering: pixelated;
 }
@@ -88,9 +93,9 @@ table {
     position: relative;
     padding: 4px;
     margin: 2px;
-    border-radius: 2px;
-    -webkit-border-radius: 2px;
-    -moz-border-radius: 2px;
+    border-radius: var(--nameDivRoundness);
+    -webkit-border-radius: var(--nameDivRoundness);
+    -moz-border-radius: var(--nameDivRoundness);
     min-width: 50px;
     text-align: center;
     cursor: pointer;
@@ -356,7 +361,7 @@ input[type='range']:hover {
     width: fit-content;
     line-height: 15px;
     text-align: center;
-    border-radius: 3px;
+    border-radius: var(--cursorDivRoundness);
     left: 18px;
     top: 12px;
     pointer-events: none;
@@ -1231,6 +1236,7 @@ input[type='range']:hover {
 
 #chat.chatting {
     background: rgba(64, 80, 80, 0.75);
+    backdrop-filter: blur(var(--chatBlurAmount));
     border-radius: 5px;
     box-shadow: 1px 1px 5px #888;
     transition: all 0.1s;

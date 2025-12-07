@@ -49,6 +49,9 @@
                     }
                     MPP.client.uri = hyperMod.lsSettings.connectUrl
                 }
+                for (let setting in hyperMod.lsSettings.customization) {
+                    hyperMod.applyCustomizationSetting(setting)
+                }
             }
         },
         '.hypermod.hm-button#exit-button': {
@@ -138,16 +141,30 @@
                 let g = e.target
                 if (!g.dataset.setting)
                     return
-                if (!(g.dataset.setting in hyperMod.settings) && !(g.dataset.setting in hyperMod.defaultSettings))
+                if (!(g.dataset.setting in hyperMod.defaultSettings))
+                    return
+                if (g.dataset.subsetting && !(g.dataset.subsetting in hyperMod.defaultSettings[g.dataset.setting]))
                     return
                 let applyButton = $('.hypermod.hm-button#apply-button')
                 switch (g.type) {
                     case 'checkbox':
-                        hyperMod.settings[g.dataset.setting] = g.checked
+                        if (g.dataset.subsetting) {
+                            if (!hyperMod.settings[g.dataset.setting])
+                                hyperMod.settings[g.dataset.setting] = {}
+                            hyperMod.settings[g.dataset.setting][g.dataset.subsetting] = g.checked
+                        } else {
+                            hyperMod.settings[g.dataset.setting] = g.checked
+                        }
                         applyButton.removeClass('inactive')
                         break
                     case 'range':
-                        hyperMod.settings[g.dataset.setting] = +g.value
+                        if (g.dataset.subsetting) {
+                            if (!hyperMod.settings[g.dataset.setting])
+                                hyperMod.settings[g.dataset.setting] = {}
+                            hyperMod.settings[g.dataset.setting][g.dataset.subsetting] = +g.value
+                        } else {
+                            hyperMod.settings[g.dataset.setting] = +g.value
+                        }
                         applyButton.removeClass('inactive')
                         break
                 }
@@ -156,16 +173,29 @@
                 let g = e.target
                 if (!g.dataset.setting)
                     return
-                if (!(g.dataset.setting in hyperMod.settings) && !(g.dataset.setting in hyperMod.defaultSettings))
+                if (!(g.dataset.setting in hyperMod.defaultSettings))
+                    return
+                if (!(g.dataset.subsetting in hyperMod.defaultSettings[g.dataset.setting]) && g.dataset.subsetting)
                     return
                 let applyButton = $('.hypermod.hm-button#apply-button')
                 switch (g.type) {
                     case 'range':
-                        let s = $(`span.hypermod[data-setting=${g.dataset.setting}]`)
-                        s.html(g.value)
+                        if (g.dataset.subsetting) {
+                            let s = $(`span.hypermod[data-setting=${g.dataset.setting}][data-subsetting=${g.dataset.subsetting}]`)
+                            s.html(g.value)
+                        }else {
+                            let s = $(`span.hypermod[data-setting=${g.dataset.setting}]`)
+                            s.html(g.value)
+                        }
                         break
                     case 'text':
-                        hyperMod.settings[g.dataset.setting] = g.value
+                        if (g.dataset.subsetting) {
+                            if (!hyperMod.settings[g.dataset.setting])
+                                hyperMod.settings[g.dataset.setting] = {}
+                            hyperMod.settings[g.dataset.setting][g.dataset.subsetting] = g.value
+                        } else {
+                            hyperMod.settings[g.dataset.setting] = g.value
+                        }
                         applyButton.removeClass('inactive')
                         break
                 }
