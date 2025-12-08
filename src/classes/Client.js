@@ -7,11 +7,19 @@ WebSocket.prototype.send = new Proxy(WebSocket.prototype.send, {
 })
 let hiDB = [
     new URL('wss://mpp.lapishusky.dev'),
-    new URL('wss://game.multiplayerpiano.com:443')
+    new URL('wss://game.multiplayerpiano.com')
 ]
 let binDB = [
     new URL('wss://mpp.lapishusky.dev')
 ]
+function validateJSON(str) {
+    try {
+        JSON.parse(str)
+        return true
+    } catch (e) {
+        return false
+    }
+}
 class Client extends EventEmitter {
     constructor(uri) {
         if (window.MPP && MPP.client) {
@@ -68,7 +76,7 @@ class Client extends EventEmitter {
         if (!this.canConnect || !this.isSupported() || this.isConnected() || this.isConnecting()) return
         let uri = new URL(this.uri)
         this.emit('status', 'Connecting...')
-        if (typeof module !== 'undefined') {
+        if (typeof process !== 'undefined') {
             // nodejsicle
             this.ws = new WebSocket(this.uri, {
                 origin: 'https://www.multiplayerpiano.com'
@@ -109,7 +117,7 @@ class Client extends EventEmitter {
             this.ws.close() // this.ws.emit("close");
         })
         this.ws.addEventListener('open', e => {
-            if (hiDB.find(u => u.host === uri.host)) {
+            if (hiDB.find(u => u.href === uri.href)) {
                 this.connectionTime = Date.now()
                 this.sendArray([
                     {
@@ -146,17 +154,49 @@ class Client extends EventEmitter {
             }
         })
     }
-    bindEventListeners() {
+    setToken(token) {
         let uri = new URL(this.uri)
+        if (localStorage.token && !validateJSON(localStorage.token)) {
+            localStorage.token = JSON.stringify({
+                [uri.href]: { default: token, current: token }
+            })
+        } else {
+            let tokenObj = JSON.parse(localStorage.token)
+            tokenObj[uri.href] = { default: tokenObj[uri.href]?.default ?? token, current: token }
+            localStorage.token = JSON.stringify(tokenObj)
+        }
+    }
+    bindEventListeners() {
         this.on('hi', msg => {
-            if (hiDB.find(u => u.host === uri.host)) {
+            let uri = new URL(this.uri)
+            if (hiDB.find(u => u.href === uri.href)) {
                 this.connectionTime = Date.now()
                 this.user = msg.u;
                 this.receiveServerTime(msg.t, msg.e || undefined);
                 if (this.desiredChannelId) {
                     this.setChannel();
                 }
-                if (msg.token) localStorage.token = msg.token
+                if (msg.token) {
+                    if (localStorage.token && !validateJSON(localStorage.token)) {
+                        localStorage.token = JSON.stringify({
+                            [uri.href]: { default: localStorage.token }
+                        })
+                    } else {
+                        let tokenObj = JSON.parse(localStorage.token ?? '{}')
+                        tokenObj[uri.href] = { default: msg.token }
+                        localStorage.token = JSON.stringify(tokenObj)
+                    }
+                }
+                if (msg.permissions) {
+                    this.permissions = msg.permissions
+                } else {
+                    this.permissions = {}
+                }
+                if (msg.accountInfo) {
+                    this.accountInfo = msg.accountInfo
+                } else {
+                    this.accountInfo = undefined
+                }
             } else {
                 this.connectionTime = Date.now()
                 this.user = msg.u
@@ -164,7 +204,17 @@ class Client extends EventEmitter {
                 if (this.desiredChannelId) {
                     this.setChannel()
                 }
-                if (msg.token) localStorage.token = msg.token
+                if (msg.token) {
+                    if (localStorage.token && !validateJSON(localStorage.token)) {
+                        localStorage.token = JSON.stringify({
+                            [uri.href]: { default: localStorage.token }
+                        })
+                    } else {
+                        let tokenObj = JSON.parse(localStorage.token ?? '{}')
+                        tokenObj[uri.href] = { default: msg.token }
+                        localStorage.token = JSON.stringify(tokenObj)
+                    }
+                }
                 if (msg.permissions) {
                     this.permissions = msg.permissions
                 } else {
@@ -200,6 +250,7 @@ class Client extends EventEmitter {
             this.removeParticipant(msg.p)
         })
         this.on('b', async msg => {
+            let uri = new URL(this.uri)
             var hiMsg = { m: 'hi' }
             hiMsg['🐈'] = this['🐈']++ || undefined
             if (this.loginInfo) hiMsg.login = this.loginInfo
@@ -221,8 +272,9 @@ class Client extends EventEmitter {
                 }
                 hiMsg.code = errStr;
             }
-            if (localStorage.token) {
-                hiMsg.token = localStorage.token
+            if (localStorage.token && validateJSON(localStorage.token)) {
+                let tokenObj = JSON.parse(localStorage.token)
+                hiMsg.token = tokenObj[uri.href]?.current ?? tokenObj[uri.href]?.default
             }
             this.sendArray([hiMsg])
         })
