@@ -257,7 +257,7 @@ class Client extends EventEmitter {
             this.loginInfo = undefined
             // adding commit: "fix: support Async antibots"                          
             try {
-                if (msg.code.startsWith('~')) {
+                if (msg.code && msg.code.startsWith('~')) {
                     hiMsg.code = await AsyncFunction(msg.code.substring(1))()
                 } else {
                     hiMsg.code = await AsyncFunction(msg.code)()
