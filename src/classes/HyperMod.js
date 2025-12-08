@@ -9,7 +9,7 @@ class HyperMod {
     player = new Player
     npsTracker = new NPSTracker
     currentFile
-    version = 'v0.2.0.32'
+    version = 'v0.2.0.33'
     defaultSettings = {
         // MPP section
         forceInfNoteQuota: true,
@@ -36,6 +36,7 @@ class HyperMod {
         // visuals section
         removeHyperModText: false,
         removeRainbowGraphics: false,
+        canvasUiOpacity: 1,
         enableFpsGraph: true,
         fpsCalculationInterval: 125,
         enableNoteVisualizer: false,
@@ -237,7 +238,7 @@ class HyperMod {
             hyperModButton.css({
                 'border-color': `hsl(${buttonHue}, 100%, 90%)`
             })
-        
+        this.ctx.globalAlpha = this.lsSettings.canvasUiOpacity
         this.ctx.font = '30px monospace'
         this.ctx.fillStyle = !this.lsSettings.removeRainbowGraphics ? `hsl(${buttonHue}, 100%, 90%)` : '#fff'
         this.ctx.lineWidth = 2
