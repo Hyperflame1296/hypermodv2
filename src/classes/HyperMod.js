@@ -422,6 +422,7 @@ class HyperMod {
                 this.updateFileList()
             })
             input.click();
+            input.remove()
             resolve()
         });
     }

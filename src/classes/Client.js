@@ -5,9 +5,12 @@ WebSocket.prototype.send = new Proxy(WebSocket.prototype.send, {
         return target.apply(thisArg, args)
     }
 })
-let hiDB = [
+let hiDB = [ // for servers that dont use the `b` event for antibot
     new URL('wss://mpp.lapishusky.dev'),
-    new URL('wss://game.multiplayerpiano.com')
+    new URL('wss://game.multiplayerpiano.com'),
+    new URL('wss://piano.ourworldofpixels.com'),
+    new URL('wss://multiplayerpianoserver.testaagml69.repl.co'),
+    new URL('wss://mppfork.glitch.me')
 ]
 let binDB = [
     new URL('wss://mpp.lapishusky.dev')
