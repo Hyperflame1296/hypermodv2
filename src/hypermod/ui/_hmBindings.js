@@ -175,7 +175,7 @@
                     return
                 if (!(g.dataset.setting in hyperMod.defaultSettings))
                     return
-                if (!(g.dataset.subsetting in hyperMod.defaultSettings[g.dataset.setting]) && g.dataset.subsetting)
+                if (g.dataset.subsetting && !(g.dataset.subsetting in hyperMod.defaultSettings[g.dataset.setting]))
                     return
                 let applyButton = $('.hypermod.hm-button#apply-button')
                 switch (g.type) {
@@ -183,7 +183,7 @@
                         if (g.dataset.subsetting) {
                             let s = $(`span.hypermod[data-setting=${g.dataset.setting}][data-subsetting=${g.dataset.subsetting}]`)
                             s.html(g.value)
-                        }else {
+                        } else {
                             let s = $(`span.hypermod[data-setting=${g.dataset.setting}]`)
                             s.html(g.value)
                         }

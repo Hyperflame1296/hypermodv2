@@ -3063,8 +3063,8 @@ $(function() {
             element.hide()
         } else {
             element.show()
-            let text = listFormat(typingUsers.values().map(id => gClient.findParticipantById(id).name))
-            element.text(typingUsers.size == 1 ? text + ' is typing...' : text + ' are typing...')
+            let text = listFormat(typingUsers.values().map(id => `<span style='color: ${gClient.findParticipantById(id).color};'>${gClient.findParticipantById(id).name}</span>`))
+            element.html(typingUsers.size == 1 ? text + ' is typing...' : text + ' are typing...')
         }
     }
     function startTyping() {
