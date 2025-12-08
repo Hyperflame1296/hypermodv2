@@ -179,7 +179,7 @@ class Client extends EventEmitter {
                 if (msg.token) {
                     if (localStorage.token && !validateJSON(localStorage.token)) {
                         localStorage.token = JSON.stringify({
-                            [uri.href]: { default: localStorage.token }
+                            [uri.href]: { default: msg.token, current: localStorage.token }
                         })
                     } else {
                         let tokenObj = JSON.parse(localStorage.token ?? '{}')
@@ -207,7 +207,7 @@ class Client extends EventEmitter {
                 if (msg.token) {
                     if (localStorage.token && !validateJSON(localStorage.token)) {
                         localStorage.token = JSON.stringify({
-                            [uri.href]: { default: localStorage.token }
+                            [uri.href]: { default: msg.token, current: localStorage.token }
                         })
                     } else {
                         let tokenObj = JSON.parse(localStorage.token ?? '{}')
