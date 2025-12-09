@@ -2,6 +2,7 @@
     --chatBlurAmount: 3px;
     --nameDivRoundness: 2px;
     --cursorDivRoundness: 3px;
+    --buttonRoundness: 2px
 }
 * {
     image-rendering: pixelated;
@@ -608,9 +609,9 @@ input[type='range']:hover {
     padding: 5px;
     cursor: pointer;
     line-height: 12px;
-    border-radius: 2px;
-    -webkit-border-radius: 2px;
-    -moz-border-radius: 2px;
+    border-radius: var(--buttonRoundness);
+    -webkit-border-radius: var(--buttonRoundness);
+    -moz-border-radius: var(--buttonRoundness);
     overflow: hidden;
     white-space: nowrap;
 }

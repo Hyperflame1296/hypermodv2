@@ -9,7 +9,7 @@ class HyperMod {
     player = new Player
     npsTracker = new NPSTracker
     currentFile
-    version = 'v0.2.0.37'
+    version = 'v0.2.0.42'
     defaultSettings = {
         // MPP section
         forceInfNoteQuota: true,
@@ -48,6 +48,7 @@ class HyperMod {
             chatBlurAmount: 3, // in pixels
             nameDivRoundness: 2, // in pixels
             cursorDivRoundness: 3, // in pixels
+            buttonRoundness: 2, // in pixels
         }
     }
     settings = structuredClone(this.defaultSettings)

@@ -181,10 +181,10 @@
                 switch (g.type) {
                     case 'range':
                         if (g.dataset.subsetting) {
-                            let s = $(`span.hypermod[data-setting=${g.dataset.setting}][data-subsetting=${g.dataset.subsetting}]`)
+                            let s = $(`span.hypermod[data-setting=\"${g.dataset.setting}\"][data-subsetting=\"${g.dataset.subsetting}\"]`)
                             s.html(g.value)
                         } else {
-                            let s = $(`span.hypermod[data-setting=${g.dataset.setting}]`)
+                            let s = $(`span.hypermod[data-setting=\"${g.dataset.setting}\"]`)
                             s.html(g.value)
                         }
                         break
