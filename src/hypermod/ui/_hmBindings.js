@@ -1,4 +1,5 @@
-(function(hyperMod) {
+import { NoteQuota } from '../../classes/NoteQuota.js'
+export default (function(hyperMod) {
     return ({
         '.hypermod#main-menu': {},
         '.ugly-button#hypermod-btn': {

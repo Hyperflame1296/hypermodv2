@@ -1,3 +1,9 @@
+// import: local classes
+import { Player } from './Player.js'
+import { NPSTracker } from './NPSTracker.js'
+import { NoteQuota } from './NoteQuota.js'
+
+// code
 class HyperMod {
     ui = new Object
     locations = new Object
@@ -9,7 +15,7 @@ class HyperMod {
     player = new Player
     npsTracker = new NPSTracker
     currentFile
-    version = 'v0.2.0.42'
+    version = 'v0.2.0.43'
     defaultSettings = {
         // MPP section
         forceInfNoteQuota: true,
@@ -432,21 +438,20 @@ class HyperMod {
 
         // load files
         let res_locations = await fetch('hypermod/ui/_hmLocations.json')
-        if (!res_locations.ok) throw `HTTPError: code ${res_locations.status}, \'${res_locations.statusText}\'`
+        if (!res_locations.ok) throw `AHH! - location loading failed! - code ${res_locations.status}, \'${res_locations.statusText}\'`
         this.locations = await res_locations.json()
 
-        let res_bindings = await fetch('hypermod/ui/_hmBindings.js')
-        if (!res_bindings.ok) throw `HTTPError: code ${res_bindings.status}, \'${res_bindings.statusText}\'`
-        this.bindings = eval(await res_bindings.text())(this)
+        let res_bindings = await import('../hypermod/ui/_hmBindings.js')
+        this.bindings = res_bindings.default(this)
 
         let res_styles = await fetch('hypermod/ui/_hmStyles.css')
-        if (!res_styles.ok) throw `HTTPError: code ${res_styles.status}, \'${res_styles.statusText}\'`
+        if (!res_styles.ok) throw `AHH! - style loading failed! - code ${res_styles.status}, \'${res_styles.statusText}\'`
         this.styles = await res_styles.text()
 
         // load ui
         for (let key of Object.keys(this.locations)) {
             let res = await fetch(this.locations[key])
-            if (!res.ok) throw `HTTPError: code ${res.status}, \'${res.statusText}\'`
+            if (!res.ok) throw `AHH! - ui loading failed! - ${res.status}, \'${res.statusText}\'`
 
             let data = await res.text()
             this.ui[key] = data
@@ -535,8 +540,6 @@ class HyperMod {
         })
     }
 }
-if (typeof module !== 'undefined') {
-    module.exports = HyperMod
-} else {
-    globalThis.HyperMod = HyperMod
+export {
+    HyperMod
 }

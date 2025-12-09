@@ -39,6 +39,10 @@
 //
 // Good luck. [insert the MIT "no warranty" clause here]
 
+// import: local classes
+import { EventEmitter } from './EventEmitter.js'
+
+// code
 const HEADER_LENGTH = 14;
 const DEFAULT_TEMPO = 500000; // 120 bpm / 500ms/qn
 const EVENT_SIZE = 8;
@@ -604,8 +608,6 @@ class Player extends EventEmitter {
 		}
 	}
 }
-if (typeof module !== 'undefined') {
-    module.exports = Player
-} else {
-    globalThis.Player = Player
+export {
+	Player
 }

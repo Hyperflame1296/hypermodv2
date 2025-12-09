@@ -1,7 +1,13 @@
+// import: local classes
+import { EventEmitter } from './EventEmitter.js'
+import { BinaryTranslator } from './BinaryTranslator.js'
+import { AsyncFunction } from '../modules/util.js'
+
+// code
 WebSocket.prototype.send = new Proxy(WebSocket.prototype.send, {
     apply: (target, thisArg, args) => {
         if (typeof args[0] !== 'string') return target.apply(thisArg, args)
-        if (localStorage.token && !args[0].startsWith(`[{"m":"hi"`)) args[0] = args[0].replace(localStorage.token, '[REDACTED]')
+        if (localStorage.token && !args[0].startsWith(`[{"m":"hi"`)) args[0] = args[0].replaceAll(localStorage.token, '[REDACTED]')
         return target.apply(thisArg, args)
     }
 })
@@ -265,6 +271,7 @@ class Client extends EventEmitter {
                 } else {
                     hiMsg.code = await AsyncFunction(msg.code)()
                 }
+                console.log('AntiBot code succesfully generated!')
             } catch (err) {
                 // adding commit: "don't send broken, send the actual error instead"
                 let errStr = '';
@@ -274,6 +281,8 @@ class Client extends EventEmitter {
                     errStr = String(err);
                 }
                 hiMsg.code = errStr;
+                console.log(`An error has accured with AntiBot code! - ${errStr}\nThe websocket will now close.`)
+                this.ws.close()
             }
             if (localStorage.token && validateJSON(localStorage.token)) {
                 let tokenObj = JSON.parse(localStorage.token)
@@ -456,8 +465,6 @@ class Client extends EventEmitter {
         this.loginInfo = loginInfo
     }
 }
-if (typeof module !== 'undefined') {
-    module.exports = Client
-} else {
-    globalThis.Client = Client
+export {
+    Client
 }

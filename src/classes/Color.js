@@ -1035,8 +1035,6 @@ Color.addToMap('#FFF000', 'Yellow rose')
 Color.addToMap('#0014A8', 'Zaffre')
 Color.addToMap('#2C1608', 'Zinnwaldite brown')
 Color.addToMap('#39A78E', 'Zomp')
-if (typeof module !== 'undefined') {
-    module.exports = Color
-} else {
-    globalThis.Color = Color
+export {
+    Color
 }

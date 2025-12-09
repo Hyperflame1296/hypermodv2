@@ -1,5 +1,3 @@
-/** @format */
-
 class NoteQuota {
     // allowance and maxHistLen are unused but kept for backwards compatibility
     static PARAMS_LOBBY = { allowance: 200, max: 600, maxHistLen: 3 }
@@ -121,8 +119,6 @@ class NoteQuota {
         return [p, p, p]
     }
 }
-if (typeof module !== 'undefined') {
-    module.exports = NoteQuota
-} else {
-    globalThis.NoteQuota = NoteQuota
+export {
+    NoteQuota
 }

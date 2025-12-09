@@ -18,7 +18,7 @@ let settings = {
     parse: {},
     rename: true
 }
-let exclusions = ['_hmBindings.js'];
+let exclusions = [];
 function processDir(src, dest) {
     ensureDirSync(dest);
     for (let entry of fs.readdirSync(src, { withFileTypes: true })) {

@@ -40,9 +40,6 @@ class NPSTracker {
         return this.size / (this.windowMs / 1000);
     }
 }
-
-if (typeof module !== 'undefined') {
-    module.exports = NPSTracker;
-} else {
-    globalThis.NPSTracker = NPSTracker;
+export {
+    NPSTracker
 }

@@ -30,7 +30,8 @@ let server = http.createServer((req, res) => {
                     res.writeHead(500, { 
                         'Content-Type': 'text/html',
                         'Cross-Origin-Embedder-Policy': 'require-corp',
-                        'Cross-Origin-Opener-Policy': 'same-origin'
+                        'Cross-Origin-Opener-Policy': 'same-origin',
+                        'Cross-Origin-Resource-Policy': 'cross-origin'
                     })
                     res.end(`<style>body { background-color: #121212 } * { color: white; font-family: monospace }</style><i style='color: red'>ERROR</i> - 500 - Internal server error!<br>${err.toString().replaceAll('\n', '<br>')}`)
                 } else {
@@ -38,7 +39,8 @@ let server = http.createServer((req, res) => {
                     res.writeHead(200, { 
                         'Content-Type': mimeTypes[ext] ?? 'application/octet-stream',
                         'Cross-Origin-Embedder-Policy': 'require-corp',
-                        'Cross-Origin-Opener-Policy': 'same-origin'
+                        'Cross-Origin-Opener-Policy': 'same-origin',
+                        'Cross-Origin-Resource-Policy': 'cross-origin'
                     })
                     res.end(content)
                 }
@@ -49,7 +51,8 @@ let server = http.createServer((req, res) => {
                     res.writeHead(500, { 
                         'Content-Type': 'text/html',
                         'Cross-Origin-Embedder-Policy': 'require-corp',
-                        'Cross-Origin-Opener-Policy': 'same-origin'
+                        'Cross-Origin-Opener-Policy': 'same-origin',
+                        'Cross-Origin-Resource-Policy': 'cross-origin'
                     })
                     res.end(`<style>body { background-color: #121212 } * { color: white; font-family: monospace }</style><i style='color: red'>ERROR</i> - 500 - Internal server error!<br>${err.toString().replaceAll('\n', '<br>')}`)
                 } else {
@@ -57,7 +60,8 @@ let server = http.createServer((req, res) => {
                     res.writeHead(200, { 
                         'Content-Type': mimeTypes[ext] ?? 'application/octet-stream',
                         'Cross-Origin-Embedder-Policy': 'require-corp',
-                        'Cross-Origin-Opener-Policy': 'same-origin'
+                        'Cross-Origin-Opener-Policy': 'same-origin',
+                        'Cross-Origin-Resource-Policy': 'cross-origin'
                     })
                     res.end(content)
                 }
@@ -68,14 +72,16 @@ let server = http.createServer((req, res) => {
                     res.writeHead(500, { 
                         'Content-Type': 'text/html',
                         'Cross-Origin-Embedder-Policy': 'require-corp',
-                        'Cross-Origin-Opener-Policy': 'same-origin'
+                        'Cross-Origin-Opener-Policy': 'same-origin',
+                        'Cross-Origin-Resource-Policy': 'cross-origin'
                     })
                     res.end(`<style>body { background-color: #121212 } * { color: white; font-family: monospace }</style><i style='color: red'>ERROR</i> - 500 - Internal server error!<br>${err.toString().replaceAll('\n', '<br>')}`)
                 } else {
                     res.writeHead(200, { 
                         'Content-Type': 'text/html',
                         'Cross-Origin-Embedder-Policy': 'require-corp',
-                        'Cross-Origin-Opener-Policy': 'same-origin'
+                        'Cross-Origin-Opener-Policy': 'same-origin',
+                        'Cross-Origin-Resource-Policy': 'cross-origin'
                     })
                     res.end(content)
                 }

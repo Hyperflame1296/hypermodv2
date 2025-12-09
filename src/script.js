@@ -1,3 +1,15 @@
+// import: classes
+import { Client } from './classes/Client.js'
+import { Color } from './classes/Color.js'
+import { HyperMod } from './classes/HyperMod.js'
+import { NoteQuota } from './classes/NoteQuota.js'
+import { Knob } from './classes/Knob.js'
+import { EventEmitter } from './classes/EventEmitter.js'
+import { AudioEngine } from './classes/AudioEngine.js'
+
+// import: methods
+import { parseMarkdown, parseContent, parseUrl } from './modules/util.js'
+
 let translation = window.i18nextify.init({
     autorun: false
 })
@@ -115,25 +127,6 @@ $(function() {
     // AudioEngine classes
 
     ////////////////////////////////////////////////////////////////
-
-    class AudioEngine {
-        init(cb) {
-            this.volume = 0.6
-            this.sounds = {}
-            this.paused = true
-            this.voices = 0
-            return this
-        }
-        load(id, url, cb) {}
-        play() {}
-        stop() {}
-        setVolume(x) {
-            this.volume = x
-        }
-        resume() {
-            this.paused = false
-        }
-    }
     class AudioEngineWeb extends AudioEngine {
         constructor() {
             super()

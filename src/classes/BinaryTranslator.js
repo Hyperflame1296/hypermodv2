@@ -1,166 +1,14 @@
-let hexLookupTable = []
-for (let i = 0; i < 256; i++) {
-    hexLookupTable.push(i.toString(16).padStart(2, '0'))
-}
-let noteNames = ['a-1', 'as-1', 'b-1', 'c0', 'cs0', 'd0', 'ds0', 'e0', 'f0', 'fs0', 'g0', 'gs0', 'a0', 'as0', 'b0', 'c1', 'cs1', 'd1', 'ds1', 'e1', 'f1', 'fs1', 'g1', 'gs1', 'a1', 'as1', 'b1', 'c2', 'cs2', 'd2', 'ds2', 'e2', 'f2', 'fs2', 'g2', 'gs2', 'a2', 'as2', 'b2', 'c3', 'cs3', 'd3', 'ds3', 'e3', 'f3', 'fs3', 'g3', 'gs3', 'a3', 'as3', 'b3', 'c4', 'cs4', 'd4', 'ds4', 'e4', 'f4', 'fs4', 'g4', 'gs4', 'a4', 'as4', 'b4', 'c5', 'cs5', 'd5', 'ds5', 'e5', 'f5', 'fs5', 'g5', 'gs5', 'a5', 'as5', 'b5', 'c6', 'cs6', 'd6', 'ds6', 'e6', 'f6', 'fs6', 'g6', 'gs6', 'a6', 'as6', 'b6', 'c7']
-let noteIds = new Map()
-for (let i = 0; i < 88; i++) {
-    noteIds.set(noteNames[i], i + 21)
-}
+// import: local classes
+import { BinaryReader } from '../classes/BinaryReader.js'
+import { BinaryWriter } from '../classes/BinaryWriter.js'
 
-let textEncoder = new TextEncoder()
-let textDecoder = new TextDecoder()
-
-class BinaryReader extends Uint8Array {
-    constructor(arrayBuffer) {
-        super(arrayBuffer)
-        this.index = 0
-    }
-
-    reachedEnd() {
-        return this.index >= this.length
-    }
-
-    readUInt8() {
-        if (this.index >= this.length) throw new Error('Invalid buffer read')
-        return this[this.index++]
-    }
-
-    readUInt16() {
-        if (this.index + 2 > this.length) throw new Error('Invalid buffer read')
-        let num = this[this.index] | (this[this.index + 1] << 8)
-        this.index += 2
-        return num
-    }
-
-    readUserId() {
-        if (this.index + 12 > this.length) throw new Error('Invalid buffer read')
-        let string = ''
-        for (let i = 12; i--; ) {
-            string += hexLookupTable[this[this.index++]]
-        }
-        return string
-    }
-
-    readColor() {
-        if (this.index + 3 > this.length) throw new Error('Invalid buffer read')
-        let string = '#'
-        for (let i = 3; i--; ) {
-            string += hexLookupTable[this[this.index++]]
-        }
-        return string
-    }
-
-    readBitflag(bit) {
-        if (this.index >= this.length) throw new Error('Invalid buffer read')
-        return ((this[this.index] >> bit) & 0b1) === 1
-    }
-
-    readVarlong() {
-        let num = this[this.index++]
-        if (num < 128) return num
-        num = num & 0b1111111
-        let factor = 128
-        while (true) {
-            //we don't really need to check if this varlong is too long
-            let thisValue = this[this.index++]
-            if (thisValue < 128) {
-                return num + thisValue * factor
-            } else {
-                if (this.index >= this.length) throw new Error('Invalid buffer read')
-                num += (thisValue & 0b1111111) * factor
-            }
-            factor *= 128
-        }
-    }
-
-    readString() {
-        let byteLength = this.readVarlong()
-        if (this.index + byteLength > this.length) throw new Error('Invalid buffer read')
-        let string = textDecoder.decode(this.buffer.slice(this.index, this.index + byteLength))
-        this.index += byteLength
-        return string
-    }
-}
-
-class BinaryWriter {
-    constructor() {
-        this.buffers = []
-    }
-
-    writeUInt8(value) {
-        let arr = new Uint8Array(new ArrayBuffer(1))
-        arr[0] = value
-        this.buffers.push(arr)
-    }
-
-    writeUInt16(value) {
-        let arr = new Uint8Array(new ArrayBuffer(2))
-        arr[0] = value & 0xff
-        arr[1] = value >>> 8
-        this.buffers.push(arr)
-    }
-
-    writeUserId(value) {
-        let arr = new Uint8Array(new ArrayBuffer(12))
-        for (let i = 12; i--; ) {
-            arr[i] = parseInt(value[i * 2] + value[i * 2 + 1], 16)
-        }
-        this.buffers.push(arr)
-    }
-
-    writeColor(value) {
-        value = value.substring(1)
-        let arr = new Uint8Array(new ArrayBuffer(3))
-        for (let i = 3; i--; ) {
-            arr[i] = parseInt(value[i * 2] + value[i * 2 + 1], 16)
-        }
-        this.buffers.push(arr)
-    }
-
-    writeVarlong(value) {
-        let length = 1
-        let threshold = 128
-        while (value >= threshold) {
-            length++
-            threshold *= 128
-        }
-        let arr = new Uint8Array(new ArrayBuffer(length))
-        for (let i = 0; i < length - 1; i++) {
-            let segment = value % 128
-            value = Math.floor(value / 128)
-            arr[i] = 0b10000000 | segment
-        }
-        arr[length - 1] = value
-        this.buffers.push(arr)
-    }
-
-    writeString(string) {
-        let stringBuffer = textEncoder.encode(string)
-        this.writeVarlong(stringBuffer.length)
-        this.buffers.push(stringBuffer)
-    }
-
-    getBuffer() {
-        let length = 0
-        for (let buffer of this.buffers) {
-            length += buffer.length
-        }
-        let outputBuffer = new Uint8Array(new ArrayBuffer(length))
-        let index = 0
-        for (let buffer of this.buffers) {
-            outputBuffer.set(buffer, index)
-            index += buffer.length
-        }
-        return outputBuffer.buffer
-    }
-}
-
+// code
 class BinaryTranslator {
+    #noteNames = ['a-1', 'as-1', 'b-1', 'c0', 'cs0', 'd0', 'ds0', 'e0', 'f0', 'fs0', 'g0', 'gs0', 'a0', 'as0', 'b0', 'c1', 'cs1', 'd1', 'ds1', 'e1', 'f1', 'fs1', 'g1', 'gs1', 'a1', 'as1', 'b1', 'c2', 'cs2', 'd2', 'ds2', 'e2', 'f2', 'fs2', 'g2', 'gs2', 'a2', 'as2', 'b2', 'c3', 'cs3', 'd3', 'ds3', 'e3', 'f3', 'fs3', 'g3', 'gs3', 'a3', 'as3', 'b3', 'c4', 'cs4', 'd4', 'ds4', 'e4', 'f4', 'fs4', 'g4', 'gs4', 'a4', 'as4', 'b4', 'c5', 'cs5', 'd5', 'ds5', 'e5', 'f5', 'fs5', 'g5', 'gs5', 'a5', 'as5', 'b5', 'c6', 'cs6', 'd6', 'ds6', 'e6', 'f6', 'fs6', 'g6', 'gs6', 'a6', 'as6', 'b6', 'c7']
+    #noteIds = new Map(this.#noteNames.map((s, i) => [s, i + 21]))
     constructor() {
         this.reset()
     }
-
     receive(message) {
         let reader = new BinaryReader(message)
         let outArray = []
@@ -509,7 +357,7 @@ class BinaryTranslator {
                     let notes = []
                     for (let i = count; i--; ) {
                         let note = {
-                            n: noteNames[reader.readUInt8() - 21]
+                            n: this.#noteNames[reader.readUInt8() - 21]
                         }
                         let velocity = reader.readUInt8()
                         if (velocity === 255) {
@@ -658,7 +506,7 @@ class BinaryTranslator {
                     }
                     this.recentSentNotes.set(time, messageObj.n.length)
                     for (let note of messageObj.n) {
-                        writer.writeUInt8(noteIds.get(note.n))
+                        writer.writeUInt8(this.#noteIds.get(note.n))
                         if (note.s === 1) {
                             writer.writeUInt8(255)
                         } else {
@@ -757,16 +605,6 @@ class BinaryTranslator {
         this.recentSentNotes = new Map() //used to ignore own notes which do come through the binary protocol
     }
 }
-if (typeof module !== 'undefined') {
-    module.exports = {
-        BinaryReader,
-        BinaryTranslator,
-        BinaryWriter
-    }
-} else {
-    Object.assign(globalThis, {
-        BinaryReader,
-        BinaryTranslator,
-        BinaryWriter
-    })
+export {
+    BinaryTranslator,
 }
