@@ -266,12 +266,17 @@ class Client extends EventEmitter {
             this.loginInfo = undefined
             // adding commit: "fix: support Async antibots"                          
             try {
-                if (msg.code && msg.code.startsWith('~')) {
+                if (!msg.code)
+                    return
+                if (msg.code.startsWith('~')) {
                     hiMsg.code = await AsyncFunction(msg.code.substring(1))()
                 } else {
                     hiMsg.code = await AsyncFunction(msg.code)()
                 }
-                console.log('AntiBot code succesfully generated!')
+                console.log(`Check hash succesfully generated! - %c${hiMsg.code}`, `
+                    color: #00ffff;   
+                    font-style: italic 
+                `)
             } catch (err) {
                 // adding commit: "don't send broken, send the actual error instead"
                 let errStr = '';
@@ -281,7 +286,10 @@ class Client extends EventEmitter {
                     errStr = String(err);
                 }
                 hiMsg.code = errStr;
-                console.log(`An error has accured with AntiBot code! - ${errStr}\nThe websocket will now close.`)
+                console.log(`An error has occured in the code that generates the check hash! - %c${errStr}\nThe websocket will now close.`, `
+                    color: #ff4848;
+                    font-style: italic
+                `)
                 this.ws.close()
             }
             if (localStorage.token && validateJSON(localStorage.token)) {
