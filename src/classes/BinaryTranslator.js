@@ -1,6 +1,6 @@
 // import: local classes
-import { BinaryReader } from '../classes/BinaryReader.js'
-import { BinaryWriter } from '../classes/BinaryWriter.js'
+import { BinaryReader } from './BinaryReader.js'
+import { BinaryWriter } from './BinaryWriter.js'
 
 // code
 class BinaryTranslator {

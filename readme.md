@@ -6,12 +6,6 @@ then, run the `build.sh` / `build.cmd` file
 now, you can just do `node index` and it open HyperModV2 at [localhost:8080](http://localhost:8080/)!
 *(ignore the warning when you run the file)*
 
-# Warning
-## ⚠ please do not use HyperMod until this issue is resolved! ⚠
-unfortunately, an issue with the client causes it to fail MPP's AntiBot.  
-this causes a 24 hour siteban for any client that connects using HyperMod.  
-i can't fix this issue until a server admin gives me details on what AntiBot checks are failing.
-
 ## Features
 - faster piano
 - infinite note quota (can be disabled in settings)

@@ -3,6 +3,9 @@ class Color {
     static addToMap(hexa, name) {
         Color.map[name] = new Color(hexa)
     }
+    r: number
+    g: number
+    b: number
     constructor() {
         var r, g, b
         if (arguments.length === 1) {

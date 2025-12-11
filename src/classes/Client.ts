@@ -30,6 +30,26 @@ function validateJSON(str) {
     }
 }
 class Client extends EventEmitter {
+    translator: BinaryTranslator
+    uri: string
+    ws: WebSocket
+    serverTimeOffset: number = 0
+    user: any
+    participantId: string
+    channel: any
+    ppl: Record<string, any> = {}
+    connectionTime: number
+    connectionAttempts: number = 0
+    desiredChannelId: string
+    desiredChannelSettings: any
+    pingInterval: number
+    canConnect: boolean = false
+    noteBuffer: any[] = []
+    noteBufferTime: number = 0
+    noteFlushInterval: number
+    permissions: any = {}
+    '🐈': number = 0
+    loginInfo: any = undefined
     constructor(uri) {
         if (window.MPP && MPP.client) {
             throw new Error(
@@ -39,25 +59,6 @@ class Client extends EventEmitter {
         super()
         this.translator = new BinaryTranslator()
         this.uri = uri
-        this.ws = undefined
-        this.serverTimeOffset = 0
-        this.user = undefined
-        this.participantId = undefined
-        this.channel = undefined
-        this.ppl = {}
-        this.connectionTime = undefined
-        this.connectionAttempts = 0
-        this.desiredChannelId = undefined
-        this.desiredChannelSettings = undefined
-        this.pingInterval = undefined
-        this.canConnect = false
-        this.noteBuffer = []
-        this.noteBufferTime = 0
-        this.noteFlushInterval = undefined
-        this.permissions = {}
-        this['🐈'] = 0
-        this.loginInfo = undefined
-
         this.bindEventListeners()
 
         this.emit('status', '(Offline mode)')

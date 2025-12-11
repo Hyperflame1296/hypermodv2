@@ -4987,12 +4987,9 @@ $(function() {
     })()
     gClient.start()
     Object.assign(globalThis, {
-        Renderer,
         CanvasRenderer,
         Piano,
         PianoKey,
-        Rect,
-        AudioEngine,
         AudioEngineWeb,
         SoundSelector,
         SiteNotification
