@@ -1,2 +1,2 @@
 clear
-npx babel src --out-dir dist --copy-files
+npx babel src --extensions ".ts,.js" --out-dir dist --copy-files

@@ -1,4 +1,4 @@
-// import: classes
+// import: local classes
 import { Client } from './classes/Client.js'
 import { Color } from './classes/Color.js'
 import { HyperMod } from './classes/HyperMod.js'
@@ -6,11 +6,21 @@ import { NoteQuota } from './classes/NoteQuota.js'
 import { Knob } from './classes/Knob.js'
 import { EventEmitter } from './classes/EventEmitter.js'
 import { AudioEngine } from './classes/AudioEngine.js'
+import { Renderer } from './classes/Renderer.js'
+import { Rect } from './classes/Rect.js'
 
-// import: methods
+// import: local interfaces
+import type { AudioVoice } from './interfaces/AudioVoice.js'
+import type { SoundPack } from './interfaces/SoundPack.js'
+import type { Blip } from './interfaces/Blip.js'
+
+// import: local constants
+import { MIDI_KEY_MAP } from './constants.js'
+
+// import: local methods
 import { parseMarkdown, parseContent, parseUrl } from './modules/util.js'
 
-let translation = window.i18nextify.init({
+let translation = window.i18nextify!.init({
     autorun: false
 })
 
@@ -63,14 +73,6 @@ $(function() {
         }
     }
     Notification.requestPermission()
-    window.requestAnimationFrame =
-        window.requestAnimationFrame ||
-        window.mozRequestAnimationFrame ||
-        window.webkitRequestAnimationFrame ||
-        window.msRequestAnimationFrame ||
-        function (cb) {
-            setTimeout(cb, 1000 / 30)
-        }
 
     var DEFAULT_VELOCITY = 0.5
 
@@ -80,19 +82,6 @@ $(function() {
 
     ////////////////////////////////////////////////////////////////
     let gHyperMod = new HyperMod()
-    class Rect {
-        constructor(x, y, w, h) {
-            this.x = x
-            this.y = y
-            this.w = w
-            this.h = h
-            this.x2 = x + w
-            this.y2 = y + h
-        }
-        contains(x, y) {
-            return x >= this.x && x <= this.x2 && y >= this.y && y <= this.y2
-        }
-    }
 
     let BASIC_PIANO_SCALES = {
         // ty https://www.pianoscales.org/
@@ -128,6 +117,14 @@ $(function() {
 
     ////////////////////////////////////////////////////////////////
     class AudioEngineWeb extends AudioEngine {
+        threshold: number
+        worker?: Worker
+        context: AudioContext
+        masterGain: GainNode
+        limiterNode: DynamicsCompressorNode
+        pianoGain: GainNode
+        synthGain: GainNode
+        playings: Record<string, AudioVoice[]>
         constructor() {
             super()
             this.threshold = 0
@@ -143,7 +140,7 @@ $(function() {
                 }
             }
         }
-        init(cb) {
+        init(cb: () => any) {
             super.init(this)
             this.context = new AudioContext({ latencyHint: 'interactive' })
 
@@ -172,7 +169,7 @@ $(function() {
             if (cb) requestAnimationFrame(cb)
             return this
         }
-        load(id, url, cb) {
+        load(id: string, url: string | URL, cb: () => any) {
             try {
                 fetch(url).then(f => {
                     if (!f.ok) throw new Error('http error: ' + f.status)
@@ -194,10 +191,10 @@ $(function() {
                 })
             }
         }
-        actualPlay(id, vol, time, part_id) {
+        actualPlay(id: string, vol: number, time: number, part_id: string) {
             //the old play(), but with time insted of delay_ms.
             if (this.paused) return
-            if (!this.sounds.hasOwnProperty(id)) return
+            if (!(id in this.sounds)) return
             if (this.volume <= 0 || (gHyperMod.lsSettings.disableAudioEngine ?? false)) return
             if (!this.playings[id])
                 this.playings[id] = []
@@ -219,14 +216,14 @@ $(function() {
                 }
                 this.voices--
             }
-            let playing = { source, gain, part_id }
+            let playing: AudioVoice = { source, gain, part_id }
             if (enableSynth) {
-                this.playings[id].voice = new SynthVoice(id, time)
+                playing.voice = new SynthVoice(id, time)
             }
             this.playings[id].push(playing)
             this.voices++
         }
-        play(id, vol, delay_ms, part_id) {
+        play(id: string, vol: number, delay_ms: number, part_id: string) {
             if (!this.sounds.hasOwnProperty(id)) return
             if (this.volume <= 0 || (gHyperMod.lsSettings.disableAudioEngine ?? false)) return
             var time = this.context.currentTime + delay_ms / 1000 //calculate time on note receive.
@@ -301,6 +298,7 @@ $(function() {
             this.context.resume()
         }
     }
+    /*
     class HMAudioEngine extends AudioEngine { // for future use
         initialized = false
         bufferLength = 0.125
@@ -367,30 +365,31 @@ $(function() {
             }
         }
     }
-
+    */
     // Renderer classes
 
     ////////////////////////////////////////////////////////////////
-
-    class Renderer {
-        init(piano) {
-            this.piano = piano
-            this.resize()
-            return this
-        }
-        resize(width, height) {
-            if (typeof width == 'undefined') width = $(this.piano.rootElement).width()
-            if (typeof height == 'undefined') height = Math.floor(width * 0.2)
-            $(this.piano.rootElement).css({
-                height: height + 'px',
-                marginTop: Math.floor($(window).height() / 2 - height / 2) + 'px'
-            })
-            this.width = width * window.devicePixelRatio
-            this.height = height * window.devicePixelRatio
-        }
-        visualize(key, color) {}
-    }
     class CanvasRenderer extends Renderer {
+        canvas: HTMLCanvasElement
+        ctx: CanvasRenderingContext2D
+        whiteKeyWidth: number
+        whiteKeyHeight: number
+        blackKeyWidth: number
+        blackKeyHeight: number
+        blackKeyOffset: number
+        keyMovement: number
+        whiteBlipWidth: number
+        whiteBlipHeight: number
+        whiteBlipX: number
+        whiteBlipY: number
+        blackBlipWidth: number
+        blackBlipHeight: number
+        blackBlipY: number
+        blackBlipX: number
+        whiteKeyRender: HTMLCanvasElement
+        blackKeyRender: HTMLCanvasElement
+        shadowRender: HTMLCanvasElement[]
+        noteLyrics: any
         constructor() {
             super()
         }
@@ -425,7 +424,7 @@ $(function() {
             // add event listeners
             var mouse_down = false
             var last_key = null
-            $(piano.rootElement).mousedown(e => {
+            $(piano.rootElement).on('mousedown', e => {
                 mouse_down = true
                 //event.stopPropagation();
                 if (!gNoPreventDefault) e.preventDefault()
@@ -454,7 +453,7 @@ $(function() {
                 },
                 false
             )
-            $(window).mouseup(() => {
+            $(window).on('mouseup', () => {
                 if (last_key) {
                     keyboard.release(last_key.note)
                 }
@@ -463,7 +462,7 @@ $(function() {
             })
             return this
         }
-        resize(width, height) {
+        resize(width?: number, height?: number) {
             super.resize(width, height)
             if (this.width < 104) this.width = 104
             if (this.height < this.width * 0.2) this.height = Math.floor(this.width * 0.2)
@@ -735,20 +734,7 @@ $(function() {
             }
             !(gHyperMod.lsSettings.removeKeyFade ?? true) ? this.ctx.restore() : void 0
         }
-        renderNoteLyrics() {
-            // render lyric
-            for (var part_id in this.noteLyrics) {
-                if (!this.noteLyrics.hasOwnProperty(i)) continue
-                var lyric = this.noteLyrics[part_id]
-                var lyric_x = x
-                var lyric_y = this.whiteKeyHeight + 1
-                this.ctx.fillStyle = key.lyric.color
-                var alpha = this.ctx.globalAlpha
-                !(gHyperMod.lsSettings.removeKeyFade ?? true) ? this.ctx.globalAlpha = alpha - ((now - key.lyric.time) / 1000) * alpha : void 0
-                this.ctx.fillRect(x, y, 10, 10)
-            }
-        }
-        getHit(x, y) {
+        getHit(x: number, y: number) {
             for (var j = 0; j < 2; j++) {
                 var sharp = j ? false : true // black keys first
                 for (var i in this.piano.keys) {
@@ -777,7 +763,14 @@ $(function() {
     ////////////////////////////////////////////////////////////////
 
     class SoundSelector {
-        constructor(piano) {
+        initialized: boolean
+        keys: any
+        loading: Record<string, boolean>
+        notification: any
+        packs: SoundPack[]
+        piano: Piano
+        soundSelection: string
+        constructor(piano: Piano) {
             this.initialized = false
             this.keys = piano.keys
             this.loading = {}
@@ -792,13 +785,13 @@ $(function() {
                 url: 'assets/sounds/mppclassic/'
             })
         }
-        addPack(pack, load) {
-            this.loading[pack.url || pack] = true
-            let add = (obj) => {
+        addPack(pack: SoundPack | string, load?: boolean) {
+            this.loading[typeof pack === 'string' ? pack : pack.url] = true
+            let add = (obj: SoundPack) => {
                 let added = typeof this.packs.find((a) => obj.name === a.name) !== 'undefined'
                 if (added) return console.warn(`Woah woah woah, pack \'${pack.name ?? pack}\' already exists!`) //no adding soundpacks twice D:<
 
-                if (obj.url.substr(obj.url.length - 1) != '/') obj.url = obj.url + '/'
+                if (obj.url.substring(obj.url.length - 1) != '/') obj.url = obj.url + '/'
                 let html = document.createElement('li')
                 html.classList = 'pack'
                 html.innerText = obj.name + ' (' + obj.keys.length + ' keys)'
@@ -822,7 +815,7 @@ $(function() {
                 })
             } else add(pack) //validate packs??
         }
-        addPacks(packs) {
+        addPacks(packs: (SoundPack | string)[]) {
             for (var i = 0; packs.length > i; i++) this.addPack(packs[i])
         }
         init() {
@@ -842,7 +835,7 @@ $(function() {
 
                 this.notification = new SiteNotification({
                     title: 'Sound Selector',
-                    html: html,
+                    html,
                     id: 'Sound-Selector',
                     duration: -1,
                     target: '#sound-btn'
@@ -851,7 +844,7 @@ $(function() {
             this.initialized = true
             this.loadPack(this.soundSelection, true)
         }
-        loadPack(pack, f) {
+        loadPack(pack: SoundPack | string, f?: boolean) {
             pack = this.packs.find((a) => pack === a.name)
             if (!pack) return
 
@@ -862,10 +855,10 @@ $(function() {
             if (pack.name === this.soundSelection && !f) return
             if (pack.keys.length != Object.keys(this.piano.keys).length) {
                 this.piano.keys = {}
-                for (var i = 0; pack.keys.length > i; i++) this.piano.keys[pack.keys[i]] = this.keys[pack.keys[i]]
+                for (let i = 0; pack.keys.length > i; i++) this.piano.keys[pack.keys[i]] = this.keys[pack.keys[i]]
                 this.piano.renderer.resize()
             }
-            for (var i in this.piano.keys) {
+            for (let i in this.piano.keys) {
                 if (!this.piano.keys.hasOwnProperty(i)) continue
                 ;(() => {
                     var key = this.piano.keys[i]
@@ -881,7 +874,7 @@ $(function() {
             if (localStorage) localStorage.soundSelection = pack.name
             this.soundSelection = pack.name
         }
-        removePack(name) {
+        removePack(name: string) {
             var found = false
             for (var i = 0; this.packs.length > i; i++) {
                 var pack = this.packs[i]
@@ -900,7 +893,17 @@ $(function() {
     ////////////////////////////////////////////////////////////////
 
     class PianoKey {
-        constructor(note, octave) {
+        note: string
+        baseNote: string
+        octave: number
+        sharp: boolean
+        loaded: boolean
+        timeLoaded: number
+        domElement: HTMLElement
+        timePlayed: number
+        blips: Blip[]
+        spatial: number
+        constructor(note: string, octave: number) {
             this.note = note + octave
             this.baseNote = note
             this.octave = octave
@@ -913,6 +916,13 @@ $(function() {
         }
     }
     class Piano {
+        rootElement: any
+        keys: {}
+        audio: AudioEngineWeb
+        renderer: CanvasRenderer
+        _midiBuffer: any
+        _blipBuffer: any
+        _flusherRunning: any
         constructor(rootElement) {
             this.rootElement = rootElement
         }
@@ -1910,6 +1920,8 @@ $(function() {
     })
 
     class Note {
+        note: any
+        octave: any
         constructor(note, octave) {
             this.note = note
             this.octave = octave || 0
@@ -2494,6 +2506,14 @@ $(function() {
 
     ////////////////////////////////////////////////////////////////
     class SiteNotification extends EventEmitter {
+        id: string
+        title: any
+        text: any
+        html: any
+        target: JQuery<any>
+        duration: any
+        domElement: JQuery<HTMLElement>
+        onresize: () => void
         constructor(par) {
             super()
             if (this instanceof SiteNotification === false) throw 'yeet'
@@ -3634,18 +3654,15 @@ $(function() {
 
     ////////////////////////////////////////////////////////////////
 
-    var MIDI_TRANSPOSE = -12
-    var MIDI_KEY_NAMES = ['a-1', 'as-1', 'b-1']
-    var bare_notes = 'c cs d ds e f fs g gs a as b'.split(' ')
+    let MIDI_TRANSPOSE = -12
+    let MIDI_KEY_NAMES = ['a-1', 'as-1', 'b-1']
+    let bare_notes = 'c cs d ds e f fs g gs a as b'.split(' ')
     for (var oct = 0; oct < 7; oct++) {
         for (var i in bare_notes) {
             MIDI_KEY_NAMES.push(bare_notes[i] + oct)
         }
     }
     MIDI_KEY_NAMES.push('c7')
-    let MIDI_KEY_MAP = Object.fromEntries(
-        MIDI_KEY_NAMES.map((name, i) => [name, i])
-    );
 
     var devices_json = '[]'
     function sendDevices() {
@@ -4058,13 +4075,15 @@ $(function() {
     var osc_types = ['sine', 'square', 'sawtooth', 'triangle']
     var osc_type_index = 1
 
-    var osc1_type = 'square'
+    var osc1_type: OscillatorType = 'square'
     var osc1_attack = 0
     var osc1_decay = 0.2
     var osc1_sustain = 0.5
     var osc1_release = 2.0
 
     class SynthVoice {
+        osc: OscillatorNode
+        gain: GainNode
         constructor(note_name, time) {
             var note_number = MIDI_KEY_MAP[note_name]
             note_number = note_number + 9 - MIDI_TRANSPOSE

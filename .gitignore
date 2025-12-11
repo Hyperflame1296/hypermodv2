@@ -135,7 +135,7 @@ dist
 .yarn/install-state.gz
 .pnp.*
 
-# hmv2 stuff
+# my stuff
 /package.json
 /package-lock.json
 src/script_backup.js

@@ -1,0 +1,12 @@
+{
+    "include": ["src"],
+    "compilerOptions": {
+        "allowJs": true,
+        "rootDir": "./src",
+        "outDir": "./dist",
+        "module": "esnext",
+        "target": "es2024",
+        "moduleResolution": "classic",
+        "esModuleInterop": true
+    }
+}

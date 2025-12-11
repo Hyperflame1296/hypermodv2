@@ -3,7 +3,7 @@
 
 to build it, run the `installPackages.sh` file (linux), or the `installPackages.cmd` file (windows)  
 then, run the `build.sh` / `build.cmd` file  
-now, you can just do `node index.js` and it open HyperModV2 at [localhost:8080](http://localhost:8080/)!
+now, you can just do `node index` and it open HyperModV2 at [localhost:8080](http://localhost:8080/)!
 *(ignore the warning when you run the file)*
 
 ## Features
@@ -18,4 +18,4 @@ now, you can just do `node index.js` and it open HyperModV2 at [localhost:8080](
 - more later, hopefully, if i can think of smth to add
 
 ## Optional Steps
-- to minify the build for slightly more speed, run `node terserBuild.mjs`
+- to minify the build for slightly more speed, run `node terserBuild`

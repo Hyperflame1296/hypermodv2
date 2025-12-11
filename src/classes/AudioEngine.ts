@@ -1,4 +1,8 @@
 class AudioEngine {
+    volume: number
+    sounds: Record<string, AudioBuffer>
+    paused: boolean
+    voices: number
     init(cb) {
         this.volume = 0.6
         this.sounds = {}
@@ -6,10 +10,10 @@ class AudioEngine {
         this.voices = 0
         return this
     }
-    load(id, url, cb) {}
+    load(id: string, url: string | URL, cb: () => any) {}
     play() {}
     stop() {}
-    setVolume(x) {
+    setVolume(x: number) {
         this.volume = x
     }
     resume() {

@@ -2517,78 +2517,83 @@ ebsprite.start = function (client) {
         }
     }
 
-    function Camera(width, height) {
-        this.width = width
-        this.height = height
-        this.position = { x: 0, y: 0 }
-    }
-
-    function SpriteProvider(sprites, cb) {
-        var urls = new Array(sprites.length)
-        for (var i in sprites) {
-            urls[i] = '/assets/ebsprite/' + sprites[i] + '.png'
+    class Camera {
+        width: number
+        height: number
+        position: { x: 0, y: 0 }
+        constructor(width: number, height: number) {
+            this.width = width
+            this.height = height
+            this.position = { x: 0, y: 0 }
         }
-        downloadImages(
-            urls,
-            function (err, imgs) {
-                if (!err) {
-                    var s = imgs
-                    this.sprites = {}
-                    this.sprites['up'] = [s[0], s[1]]
-                    this.sprites['right'] = [s[2], s[3]]
-                    this.sprites['down'] = [s[4], s[5]]
-                    this.sprites['left'] = [s[6], s[7]]
-                    this.sprites['up-right'] = [s[8] || s[2], s[9] || s[3]]
-                    this.sprites['right-down'] = [s[10] || s[2], s[11] || s[3]]
-                    this.sprites['down-left'] = [s[12] || s[6], s[13] || s[7]]
-                    this.sprites['left-up'] = [s[14] || s[6], s[15] || s[7]]
-                }
-                if (cb) cb()
-            }.bind(this)
-        )
     }
 
-    //SpriteProvider.prototype.sprites = {};
-    SpriteProvider.prototype = new SpriteProvider(['2354', '2355', '2356', '2357', '2358', '2359', '2360', '2361'])
-
-    SpriteProvider.prototype.getCurrentSprite = function (player) {
-        if (this.sprites && this.sprites[player.direction]) {
-            if (player.walking) {
-                var time = Date.now() - player.updateTime
-                return this.sprites[player.direction][time & 0x80 ? 0 : 1]
-            } else {
-                return this.sprites[player.direction][0]
+    class SpriteProvider {
+        sprites: Record<String, any>
+        constructor(sprites = ['2354','2355','2356','2357','2358','2359','2360','2361'], cb) {
+            var urls = new Array(sprites.length)
+            for (var i in sprites) {
+                urls[i] = '/assets/ebsprite/' + sprites[i] + '.png'
+            }
+            downloadImages(
+                urls,
+                function (err, imgs) {
+                    if (!err) {
+                        var s = imgs
+                        this.sprites = {}
+                        this.sprites['up'] = [s[0], s[1]]
+                        this.sprites['right'] = [s[2], s[3]]
+                        this.sprites['down'] = [s[4], s[5]]
+                        this.sprites['left'] = [s[6], s[7]]
+                        this.sprites['up-right'] = [s[8] || s[2], s[9] || s[3]]
+                        this.sprites['right-down'] = [s[10] || s[2], s[11] || s[3]]
+                        this.sprites['down-left'] = [s[12] || s[6], s[13] || s[7]]
+                        this.sprites['left-up'] = [s[14] || s[6], s[15] || s[7]]
+                    }
+                    if (cb) cb()
+                }.bind(this)
+            )
+        }
+        getCurrentSprite(player) {
+            if (this.sprites && this.sprites[player.direction]) {
+                if (player.walking) {
+                    var time = Date.now() - player.updateTime
+                    return this.sprites[player.direction][time & 0x80 ? 0 : 1]
+                } else {
+                    return this.sprites[player.direction][0]
+                }
             }
         }
     }
+    class Player {
+        constructor(id) {
+            this.id = id
 
-    var Player = function (id) {
-        this.id = id
+            //this.sprites = spriteData[0].sprites;
+            this.sprites = spriteData[parseInt(id, 16) % spriteData.length].sprites
+            this.spriteProvider = new SpriteProvider(this.sprites)
+            this.canMoveDiagonally =
+                this.sprites[8] &&
+                this.sprites[9] &&
+                this.sprites[10] &&
+                this.sprites[11] &&
+                this.sprites[12] &&
+                this.sprites[13] &&
+                this.sprites[14] &&
+                this.sprites[15]
+                    ? true
+                    : false
+            this.walkSpeed = 0.15
 
-        //this.sprites = spriteData[0].sprites;
-        this.sprites = spriteData[parseInt(id, 16) % spriteData.length].sprites
-        this.spriteProvider = new SpriteProvider(this.sprites)
-        this.canMoveDiagonally =
-            this.sprites[8] &&
-            this.sprites[9] &&
-            this.sprites[10] &&
-            this.sprites[11] &&
-            this.sprites[12] &&
-            this.sprites[13] &&
-            this.sprites[14] &&
-            this.sprites[15]
-                ? true
-                : false
-        this.walkSpeed = 0.15
-
-        this.direction = 'down'
-        this.walking = false
-        this.updatePosition = {
-            x: canvas.width / 2,
-            y: canvas.height / 2
+            this.direction = 'down'
+            this.walking = false
+            this.updatePosition = {
+                x: canvas.width / 2,
+                y: canvas.height / 2
+            }
+            this.position = { x: this.updatePosition.x, y: this.updatePosition.y }
+            this.updateTime = Date.now()
         }
-        this.position = { x: this.updatePosition.x, y: this.updatePosition.y }
-        this.updateTime = Date.now()
     }
 
     var player = new Player(client.participantId)

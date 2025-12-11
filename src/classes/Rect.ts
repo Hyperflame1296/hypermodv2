@@ -1,0 +1,22 @@
+class Rect {
+    x: number
+    y: number
+    w: number
+    h: number
+    x2: number
+    y2: number
+    constructor(x, y, w, h) {
+        this.x = x
+        this.y = y
+        this.w = w
+        this.h = h
+        this.x2 = x + w
+        this.y2 = y + h
+    }
+    contains(x: number, y: number) {
+        return x >= this.x && x <= this.x2 && y >= this.y && y <= this.y2
+    }
+}
+export {
+    Rect
+}

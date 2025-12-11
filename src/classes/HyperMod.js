@@ -1,7 +1,6 @@
 // import: local classes
 import { Player } from './Player.js'
 import { NPSTracker } from './NPSTracker.js'
-import { NoteQuota } from './NoteQuota.js'
 
 // code
 class HyperMod {
@@ -9,7 +8,6 @@ class HyperMod {
     locations = new Object
     bindings = new Object
     styles = new Object
-    lsSettings = new Object
     fileData = new Map
     fpsHist = new Array
     player = new Player
@@ -58,6 +56,7 @@ class HyperMod {
         }
     }
     settings = structuredClone(this.defaultSettings)
+    lsSettings = structuredClone(this.defaultSettings)
     channelColors = [
         '#ff0000',
         '#ff8800',
