@@ -3,7 +3,7 @@ import { Player } from './Player.js'
 import { NPSTracker } from './NPSTracker.js'
 
 // code
-class HyperMod {
+export class HyperMod {
     ui = new Object
     locations = new Object
     bindings = new Object
@@ -538,7 +538,4 @@ class HyperMod {
             }
         })
     }
-}
-export {
-    HyperMod
 }

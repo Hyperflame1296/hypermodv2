@@ -2,7 +2,7 @@
 import { EventEmitter } from './EventEmitter.js'
 
 // code
-class Knob extends EventEmitter {
+export class Knob extends EventEmitter {
     constructor(canvas, min, max, step, value, name, unit) {
         super()
 
@@ -180,7 +180,4 @@ class Knob extends EventEmitter {
             y: e.clientY - (element.getBoundingClientRect().top - element.clientTop + element.scrollTop)
         }
     }
-}
-export {
-    Knob
 }

@@ -1,4 +1,4 @@
-class NoteQuota {
+export class NoteQuota {
     // allowance and maxHistLen are unused but kept for backwards compatibility
     static PARAMS_LOBBY = { allowance: 200, max: 600, maxHistLen: 3 }
     static PARAMS_NORMAL = { allowance: 400, max: 1200, maxHistLen: 3 }
@@ -118,7 +118,4 @@ class NoteQuota {
         const p = this.points
         return [p, p, p]
     }
-}
-export {
-    NoteQuota
 }

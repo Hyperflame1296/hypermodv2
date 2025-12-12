@@ -1,4 +1,4 @@
-class BinaryReader extends Uint8Array {
+export class BinaryReader extends Uint8Array {
     textDecoder = new TextDecoder()
     #hexLookupTable = do {
         let arr = []
@@ -76,7 +76,4 @@ class BinaryReader extends Uint8Array {
         this.index += byteLength
         return string
     }
-}
-export {
-    BinaryReader
 }

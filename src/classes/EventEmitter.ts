@@ -1,4 +1,5 @@
-class EventEmitter {
+export class EventEmitter {
+    _events: Record<string, ((data?: any) => any)[]>
     constructor() {
         this._events = {}
     }
@@ -12,7 +13,7 @@ class EventEmitter {
         if (idx < 0) return
         this._events[en].splice(idx, 1)
         if (!this._events[en].length)
-            delete this.events[en]
+            delete this._events[en]
     }
     emit(en) {
         if (!(en in this._events)) return
@@ -21,7 +22,4 @@ class EventEmitter {
         var args = Array.from(arguments).slice(1)
         for (var i = 0; i < fns.length; i++) fns[i].apply(this, args)
     }
-}
-export {
-    EventEmitter
 }

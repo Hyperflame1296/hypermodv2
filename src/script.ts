@@ -78,6 +78,21 @@ $(function() {
 
     var TIMING_TARGET = 1000
 
+    window.requestAnimationFrame =
+        window.requestAnimationFrame ||
+        window.webkitRequestAnimationFrame ||
+        window.mozRequestAnimationFrame ||
+        window.oRequestAnimationFrame ||
+        window.msRequestAnimationFrame ||
+        function (callback) {
+            return setTimeout(callback, 1000 / 60)
+        }
+    
+    window.AudioContext = 
+        window.AudioContext || 
+        window.webkitAudioContext || 
+        undefined
+
     // Utility
 
     ////////////////////////////////////////////////////////////////
@@ -142,30 +157,30 @@ $(function() {
         }
         init(cb: () => any) {
             super.init(this)
-            this.context = new AudioContext({ latencyHint: 'interactive' })
+            if (AudioContext) {
+                this.context = new AudioContext({ latencyHint: 'interactive' })
 
-            this.masterGain = this.context.createGain()
-            this.masterGain.connect(this.context.destination)
-            this.masterGain.gain.value = this.volume
+                this.masterGain = this.context.createGain()
+                this.masterGain.connect(this.context.destination)
+                this.masterGain.gain.value = this.volume
 
-            this.limiterNode = this.context.createDynamicsCompressor()
-            this.limiterNode.threshold.value = -10
-            this.limiterNode.knee.value = 0
-            this.limiterNode.ratio.value = 20
-            this.limiterNode.attack.value = 0.002
-            this.limiterNode.release.value = 0.08553
-            this.limiterNode.connect(this.masterGain)
+                this.limiterNode = this.context.createDynamicsCompressor()
+                this.limiterNode.threshold.value = -10
+                this.limiterNode.knee.value = 0
+                this.limiterNode.ratio.value = 20
+                this.limiterNode.attack.value = 0.002
+                this.limiterNode.release.value = 0.08553
+                this.limiterNode.connect(this.masterGain)
 
-            // for synth mix
-            this.pianoGain = this.context.createGain()
-            this.pianoGain.gain.value = 0.5
-            this.pianoGain.connect(this.limiterNode)
-            this.synthGain = this.context.createGain()
-            this.synthGain.gain.value = 0.5
-            this.synthGain.connect(this.limiterNode)
-
+                // for synth mix
+                this.pianoGain = this.context.createGain()
+                this.pianoGain.gain.value = 0.5
+                this.pianoGain.connect(this.limiterNode)
+                this.synthGain = this.context.createGain()
+                this.synthGain.gain.value = 0.5
+                this.synthGain.connect(this.limiterNode)
+            }
             this.playings = {}
-
             if (cb) requestAnimationFrame(cb)
             return this
         }
@@ -174,10 +189,15 @@ $(function() {
                 fetch(url).then(f => {
                     if (!f.ok) throw new Error('http error: ' + f.status)
                     f.arrayBuffer().then(data => {
-                        this.context.decodeAudioData(data).then(b => {
-                            this.sounds[id] = b
+                        if (this.context)
+                            this.context.decodeAudioData(data).then(b => {
+                                this.sounds[id] = b
+                                cb?.()
+                            })
+                        else {
+                            this.sounds[id] = data
                             cb?.()
-                        })
+                        }
                     })
                 })
             } catch (e) {
@@ -194,6 +214,7 @@ $(function() {
         actualPlay(id: string, vol: number, time: number, part_id: string) {
             //the old play(), but with time insted of delay_ms.
             if (this.paused) return
+            if (!this.context) return
             if (!(id in this.sounds)) return
             if (this.volume <= 0 || (gHyperMod.lsSettings.disableAudioEngine ?? false)) return
             if (!this.playings[id])
@@ -226,6 +247,7 @@ $(function() {
         play(id: string, vol: number, delay_ms: number, part_id: string) {
             if (!this.sounds.hasOwnProperty(id)) return
             if (this.volume <= 0 || (gHyperMod.lsSettings.disableAudioEngine ?? false)) return
+            if (!this.context) return
             var time = this.context.currentTime + delay_ms / 1000 //calculate time on note receive.
             var delay = delay_ms - this.threshold
             if (delay <= 0) this.actualPlay(id, vol, time, part_id)
@@ -249,6 +271,7 @@ $(function() {
         }
         actualStop(id, time, part_id) {
             if (this.volume <= 0 || (gHyperMod.lsSettings.disableAudioEngine ?? false)) return
+            if (!this.context) return
             if (!this.playings[id])
                 this.playings[id] = []
             if (id in this.playings && this.playings[id]) {
@@ -269,6 +292,7 @@ $(function() {
         }
         stop(id, delay_ms, part_id) {
             if (this.volume <= 0 || (gHyperMod.lsSettings.disableAudioEngine ?? false)) return
+            if (!this.context) return
             var time = this.context.currentTime + delay_ms / 1000
             var delay = delay_ms - this.threshold
             if (delay <= 0) this.actualStop(id, time, part_id)
@@ -777,7 +801,7 @@ $(function() {
             this.notification
             this.packs = []
             this.piano = piano
-            this.soundSelection = localStorage.soundSelection ?? 'mppclassic'
+            this.soundSelection = localStorage.soundSelection ?? 'MPP Classic'
             this.addPack({
                 name: 'MPP Classic',
                 keys: Object.keys(this.piano.keys),
@@ -788,7 +812,7 @@ $(function() {
         addPack(pack: SoundPack | string, load?: boolean) {
             this.loading[typeof pack === 'string' ? pack : pack.url] = true
             let add = (obj: SoundPack) => {
-                let added = typeof this.packs.find((a) => obj.name === a.name) !== 'undefined'
+                let added = typeof this.packs.find(a => obj.name === a.name) !== 'undefined'
                 if (added) return console.warn(`Woah woah woah, pack \'${pack.name ?? pack}\' already exists!`) //no adding soundpacks twice D:<
 
                 if (obj.url.substring(obj.url.length - 1) != '/') obj.url = obj.url + '/'
@@ -816,7 +840,7 @@ $(function() {
             } else add(pack) //validate packs??
         }
         addPacks(packs: (SoundPack | string)[]) {
-            for (var i = 0; packs.length > i; i++) this.addPack(packs[i])
+            for (let pack of packs) this.addPack(pack)
         }
         init() {
             if (this.initialized) return console.warn('Sound selector already initialized!')
@@ -845,9 +869,9 @@ $(function() {
             this.loadPack(this.soundSelection, true)
         }
         loadPack(pack: SoundPack | string, f?: boolean) {
-            pack = this.packs.find((a) => pack === a.name)
-            if (!pack) return
-
+            pack = this.packs.find(a => pack === a.name || pack.name === a.name)
+            if (!pack)
+                return
             if (typeof pack === 'string') {
                 console.warn('Sound pack does not exist! Loading default pack...')
                 return this.loadPack('MPP Classic')
@@ -927,7 +951,6 @@ $(function() {
             this.rootElement = rootElement
         }
         init() {
-            window.AudioContext = window.AudioContext || window.webkitAudioContext || undefined
             this.keys = {}
 
             var white_spatial = 0
@@ -4849,18 +4872,6 @@ $(function() {
         function startConfettiInner() {
             var width = window.innerWidth
             var height = window.innerHeight
-            window.requestAnimFrame = (function () {
-                return (
-                    window.requestAnimationFrame ||
-                    window.webkitRequestAnimationFrame ||
-                    window.mozRequestAnimationFrame ||
-                    window.oRequestAnimationFrame ||
-                    window.msRequestAnimationFrame ||
-                    function (callback) {
-                        return setTimeout(callback, 16.6666667)
-                    }
-                )
-            })()
             var canvas = document.getElementById('confetti-canvas')
             if (canvas === null) {
                 canvas = document.createElement('canvas')
@@ -4888,7 +4899,7 @@ $(function() {
                     else {
                         updateParticles()
                         drawParticles(context)
-                        animationTimer = requestAnimFrame(runAnimation)
+                        animationTimer = requestAnimationFrame(runAnimation)
                     }
                 })()
             }

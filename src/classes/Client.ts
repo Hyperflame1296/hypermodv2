@@ -29,7 +29,7 @@ function validateJSON(str) {
         return false
     }
 }
-class Client extends EventEmitter {
+export class Client extends EventEmitter {
     translator: BinaryTranslator
     uri: string
     ws: WebSocket
@@ -473,7 +473,4 @@ class Client extends EventEmitter {
     setLoginInfo(loginInfo) {
         this.loginInfo = loginInfo
     }
-}
-export {
-    Client
 }

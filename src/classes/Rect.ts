@@ -1,4 +1,4 @@
-class Rect {
+export class Rect {
     x: number
     y: number
     w: number
@@ -16,7 +16,4 @@ class Rect {
     contains(x: number, y: number) {
         return x >= this.x && x <= this.x2 && y >= this.y && y <= this.y2
     }
-}
-export {
-    Rect
 }

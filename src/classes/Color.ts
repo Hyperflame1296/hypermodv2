@@ -1,4 +1,4 @@
-class Color {
+export class Color {
     static map = {}
     static addToMap(hexa, name) {
         Color.map[name] = new Color(hexa)
@@ -1038,6 +1038,3 @@ Color.addToMap('#FFF000', 'Yellow rose')
 Color.addToMap('#0014A8', 'Zaffre')
 Color.addToMap('#2C1608', 'Zinnwaldite brown')
 Color.addToMap('#39A78E', 'Zomp')
-export {
-    Color
-}

@@ -48,7 +48,7 @@ const DEFAULT_TEMPO = 500000; // 120 bpm / 500ms/qn
 const EVENT_SIZE = 8;
 const EVENT_CODE = { NOTE_ON: 0x09, NOTE_OFF: 0x08, CONTROL_CHANGE: 0x0B, SET_TEMPO: 0x51, END_OF_TRACK: 0x2F };
 
-class Player extends EventEmitter {
+export class Player extends EventEmitter {
 	// midi properties
 	#format;
 	#numTracks;
@@ -607,7 +607,4 @@ class Player extends EventEmitter {
 			this.#startTime = performance.now();
 		}
 	}
-}
-export {
-	Player
 }

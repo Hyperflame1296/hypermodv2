@@ -1,4 +1,4 @@
-class BinaryWriter {
+export class BinaryWriter {
     textEncoder = new TextEncoder()
     constructor() {
         this.buffers = []
@@ -70,7 +70,4 @@ class BinaryWriter {
         }
         return outputBuffer.buffer
     }
-}
-export {
-    BinaryWriter
 }

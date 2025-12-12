@@ -1,4 +1,4 @@
-class Renderer {
+export class Renderer {
     init(piano) {
         this.piano = piano
         this.resize()
@@ -15,7 +15,4 @@ class Renderer {
         this.height = height * window.devicePixelRatio
     }
     visualize(key, color) {}
-}
-export {
-    Renderer
 }

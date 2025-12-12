@@ -1,4 +1,4 @@
-class NPSTracker {
+export class NPSTracker {
     constructor(windowMs = 1000, capacity = 1024) {
         this.windowMs = windowMs;
         this.startTime = performance.now();
@@ -39,7 +39,4 @@ class NPSTracker {
         // Already trimmed, just return count
         return this.size / (this.windowMs / 1000);
     }
-}
-export {
-    NPSTracker
 }
