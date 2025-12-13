@@ -3,6 +3,13 @@ import { EventEmitter } from './EventEmitter.js'
 import { BinaryTranslator } from './BinaryTranslator.js'
 import { AsyncFunction } from '../modules/util.js'
 
+// import: local interfaces
+import type { Login } from '../interfaces/Login.js'
+import type { IncomingMessageMap } from '../interfaces/IncomingMessageMap.js'
+import type { OutgoingMessageMap } from '../interfaces/OutgoingMessageMap.js'
+import type { AccountInfo } from '../interfaces/AccountInfo.js'
+import type { UserPermissions } from '../interfaces/UserPermissions.js'
+
 // code
 WebSocket.prototype.send = new Proxy(WebSocket.prototype.send, {
     apply: (target, thisArg, args) => {
@@ -49,7 +56,9 @@ export class Client extends EventEmitter {
     noteFlushInterval: number
     permissions: any = {}
     '🐈': number = 0
-    loginInfo: any = undefined
+    loginInfo: Login
+    accountInfo: AccountInfo
+    permissions: UserPermissions
     constructor(uri) {
         if (window.MPP && MPP.client) {
             throw new Error(
@@ -159,7 +168,7 @@ export class Client extends EventEmitter {
         this.ws.addEventListener('message', async e => {
             var transmission = this.ws.binaryType === 'arraybuffer' ? this.translator.receive(e.data) : JSON.parse(e.data)
             for (var i = 0; i < transmission.length; i++) {
-                var msg = transmission[i]
+                var msg: IncomingMessageMap[keyof IncomingMessageMap] = transmission[i]
                 this.emit(msg.m, msg)
             }
         })
@@ -303,7 +312,7 @@ export class Client extends EventEmitter {
     send(raw) {
         if (this.isConnected()) this.ws.send(raw)
     }
-    sendArray(arr) {
+    sendArray(arr: OutgoingMessageMap[keyof OutgoingMessageMap][]) {
         this.isConnected() && this.ws.binaryType === 'arraybuffer' ? this.send(this.translator.send(arr)) : this.send(JSON.stringify(arr))
     }
     setChannel(id, set) {
@@ -472,5 +481,27 @@ export class Client extends EventEmitter {
     }
     setLoginInfo(loginInfo) {
         this.loginInfo = loginInfo
+    }
+    on<K extends keyof IncomingMessageMap>(
+        en: K,
+        fn: (msg: IncomingMessageMap[K]) => any
+    ): this {
+        super.on(en, fn)
+        return this
+    }
+    emit(en: string, data: any): boolean {
+        try {
+            super.emit(en, data)
+            return true
+        } catch (err) {
+            return false
+        }
+    }
+    off<K extends keyof IncomingMessageMap>(
+        en: K,
+        fn: (msg: IncomingMessageMap[K]) => any
+    ): this {
+        super.off(en, fn)
+        return this
     }
 }

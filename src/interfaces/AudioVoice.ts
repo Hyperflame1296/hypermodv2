@@ -1,3 +1,4 @@
+// declaration
 export interface AudioVoice {
     source: AudioBufferSourceNode, 
     gain: GainNode

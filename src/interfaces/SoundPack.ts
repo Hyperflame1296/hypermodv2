@@ -1,3 +1,4 @@
+// declaration
 export interface SoundPack {
     name: string
     keys: string[]

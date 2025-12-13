@@ -6,6 +6,7 @@ export class EventEmitter {
     on(en, fn) {
         if (!(en in this._events)) this._events[en] = []
         this._events[en].push(fn)
+        return this
     }
     off(en, fn) {
         if (!(en in this._events)) return
@@ -14,6 +15,7 @@ export class EventEmitter {
         this._events[en].splice(idx, 1)
         if (!this._events[en].length)
             delete this._events[en]
+        return this
     }
     emit(en) {
         if (!(en in this._events)) return
