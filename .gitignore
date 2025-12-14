@@ -137,7 +137,6 @@ dist
 
 # my stuff
 /possibleAntibotFails.txt
-/package.json
 /package-lock.json
 src/script_backup.js
 /quick_build.ps1
