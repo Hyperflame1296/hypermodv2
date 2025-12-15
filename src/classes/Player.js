@@ -276,10 +276,11 @@ export class Player extends EventEmitter {
 		const start = performance.now()
 		this.#isLoading = true
 		let buffer
-		if (arrbuf instanceof SharedArrayBuffer) {
+		let ArrCtor = typeof SharedArrayBuffer !== 'undefined' ? SharedArrayBuffer : ArrayBuffer
+		if (arrbuf instanceof ArrCtor) {
 			buffer = arrbuf
 		} else {
-			buffer = new SharedArrayBuffer(arrbuf.byteLength)
+			buffer = new ArrCtor(arrbuf.byteLength)
 			new Uint8Array(buffer).set(new Uint8Array(arrbuf))
 		}
 

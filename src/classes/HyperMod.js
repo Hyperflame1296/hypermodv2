@@ -13,7 +13,7 @@ export class HyperMod {
     player = new Player
     npsTracker = new NPSTracker
     currentFile
-    version = 'v0.2.0.51'
+    version = 'v0.2.0.52'
     defaultSettings = {
         // MPP section
         forceInfNoteQuota: true,
@@ -102,9 +102,7 @@ export class HyperMod {
                     for (let command of this.commands) {
                         initial += `\`${command.name}\`${this.commands.indexOf(command) + 1 === this.commands.length ? '' : ', '}`
                     }
-                    MPP.chat.send(initial)
-                } else {
-                    MPP.chat.send('a')
+                    MPP.chat.send(this.tags.log + initial)
                 }
             }
         },
@@ -113,7 +111,7 @@ export class HyperMod {
             description: 'Evaluates JavaScript code.',
             syntax: `${this.prefix}js [command]`,
             func: (a, msg) => {
-                let input = a.slice(1).join(' ')
+                let input = a.slice(1).join(' ').trim()
                 this.evalCode(input).then(res => {
                     let str = 'unknown type'
                     switch (typeof res) {
@@ -145,6 +143,63 @@ export class HyperMod {
                 }).catch(err => {
                     MPP.chat.send(`[❌] » \`${err}\``)
                 })
+            }
+        },
+        {
+            name: 'play',
+            description: 'Play a MIDI from the loaded MIDI list.',
+            syntax: `${this.prefix}play [midi]`,
+            func: async(a, msg) => {
+                let input = a.slice(1).join(' ').trim()
+                if (input === '') {
+                    if (this.player.tracksParsed !== 0) {
+                        this.playMIDI()
+                        return MPP.chat.send(this.tags.success + `Resumed the current MIDI.`)
+                    } else
+                        return MPP.chat.send(this.tags.error   + `Specify a MIDI to play.`)
+                }
+                if (input === 'random') {
+                    if (this.fileData.size == 0)
+                        return MPP.chat.send(this.tags.error + `You need to load a MIDI first. Use the HyperMod UI for this.`)
+                    let fn = this.fileData.keys().toArray()[Math.floor(Math.random() * this.fileData.size)]
+                    MPP.chat.send(this.tags.success + `Loading MIDI \`\`\`${fn}\`\`\`...`)
+                    await this.loadMIDI(fn)
+                    this.updateFileList()
+                    MPP.chat.send(this.tags.success + `Now playing: \`\`\`${fn}\`\`\` | ${this.player.totalEvents} event(s) loaded`)
+                    if (this.lsSettings.enableClientSidePlayback)
+                        MPP.chat.send(this.tags.success + `Client-side playback is on. This MIDI will only be heard on your end.`)
+                    this.playMIDI()
+                } else {
+                    if (!this.fileData.get(input))
+                        return MPP.chat.send(this.tags.error + `There\'s no MIDI in the file list named \`\`\`${input}\`\`\`!`)
+                    MPP.chat.send(this.tags.success + `Loading MIDI \`\`\`${input}\`\`\`...`)
+                    await this.loadMIDI(input)
+                    this.updateFileList()
+                    MPP.chat.send(this.tags.success + `Now playing: \`\`\`${input}\`\`\` | ${this.player.totalEvents} event(s) loaded`)
+                    if (this.lsSettings.enableClientSidePlayback)
+                        MPP.chat.send(this.tags.success + `Client-side playback is on. This MIDI will only be heard on your end.`)
+                    this.playMIDI()
+                }
+            }
+        },
+        {
+            name: 'pause',
+            description: 'Pause the currently playing MIDI.',
+            syntax: `${this.prefix}pause`,
+            func: () => {
+                if (!this.player.isPlaying)
+                    return MPP.chat.send(this.tags.error + `No MIDI is currently playing!`)
+                this.pauseMIDI()
+                MPP.chat.send(this.tags.success + `Paused the current MIDI.`)
+            }
+        },
+        {
+            name: 'stop',
+            description: 'Stop playing the current MIDI.',
+            syntax: `${this.prefix}stop`,
+            func: () => {
+                this.stopMIDI()
+                MPP.chat.send(this.tags.success + `Stopped playing.`)
             }
         }
     ]
@@ -223,7 +278,7 @@ export class HyperMod {
             b = a[0]?.trim() ?? '',
             c = a[1]?.trim() ?? ''
 
-        if (b.startsWith(this.prefix)) {
+        if (b.startsWith(this.prefix) && b !== this.prefix) {
             try {
                 let command = this.commands.find(c => c.name === b.replace(this.prefix, ''))
                 if (!command)

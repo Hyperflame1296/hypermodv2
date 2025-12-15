@@ -1841,11 +1841,11 @@ $(function() {
     var gDisableMIDIDrumChannel = localStorage.disableMIDIDrumChannel ? localStorage.disableMIDIDrumChannel == 'true' : true
 
     function shouldShowSnowflakes() {
-        let snowflakes = document.querySelector('.snowflakes')
+        let snowflakes = $('div#tsparticles')
         if (gSnowflakes) {
-            snowflakes.style.visibility = 'visible'
+            snowflakes.show()
         } else {
-            snowflakes.style.visibility = 'hidden'
+            snowflakes.hide()
         }
     }
 
@@ -4995,7 +4995,35 @@ $(function() {
             i18nextify.forceRerender()
             closeModal()
         })
-    })()
+    })();
+    (() => {
+        if (!gSnowflakes) 
+            return
+        (async () => {
+            let snow = document.createElement('div')
+            snow.id = 'tsparticles'
+            $(document.body).prepend(snow)
+            await loadSnowPreset(tsParticles);
+            await tsParticles.load({
+                id: 'tsparticles',
+                options: {
+                    preset: 'snow',
+                    particles: {
+                        size: {
+                            value: { min: 0, max: 3 }
+                        },
+                        number: {
+                            value: 250
+                        }
+                    },
+                    background: {
+                        color: 'transparent'
+                    }
+                }
+            })
+            console.log('snow particles are working')
+        })();
+    })();
     gClient.start()
     Object.assign(globalThis, {
         CanvasRenderer,
