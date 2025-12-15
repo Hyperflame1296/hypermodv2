@@ -22,6 +22,7 @@ export class HyperMod {
         sendNotifications: true,
         showUsersWhenTyping: true,
         connectUrl: 'wss://mppclone.com',
+        autoCrown: true,
         // MIDI I/O section
         midiOutputVelocityThreshold: 0,
         // Player section
@@ -82,6 +83,7 @@ export class HyperMod {
     fps = 0
     lastTime = performance.now()
     prefix = '$'
+    messageLoop
     tags = {
         log: `[HyperMod ${this.version}] - `,
         success: `[HyperMod ${this.version}] - [✅] - `,
@@ -211,6 +213,15 @@ export class HyperMod {
         this.getSettings()
         this.updateSettings()
         this.updateFileList()
+        this.messageLoop = setInterval(() => {
+            if (typeof MPP === 'undefined')
+                return
+            if (MPP.client.channel && !MPP.client.channel?.crown?.participantId && !MPP.client.channel?.settings.lobby)
+                MPP.client.sendArray([{
+                    m: 'chown',
+                    id: MPP.client.participantId
+                }])
+        }, 50)
         for (let setting in this.lsSettings.customization) {
             this.applyCustomizationSetting(setting)
         }

@@ -23,7 +23,8 @@ let hiDB = [ // for servers that dont use the `b` event for antibot
     new URL('wss://game.multiplayerpiano.com'),
     new URL('wss://piano.ourworldofpixels.com'),
     new URL('wss://multiplayerpianoserver.testaagml69.repl.co'),
-    new URL('wss://mppfork.glitch.me')
+    new URL('wss://mppfork.glitch.me'),
+    new URL('wss://mpp.hri7566.info:8443')
 ]
 let binDB = [
     new URL('wss://mpp.lapishusky.dev')
