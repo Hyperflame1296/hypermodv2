@@ -13,7 +13,7 @@ export class HyperMod {
     player = new Player
     npsTracker = new NPSTracker
     currentFile
-    version = 'v0.2.0.54'
+    version = 'v0.2.0.55'
     defaultSettings = {
         // MPP section
         forceInfNoteQuota: true,
@@ -353,7 +353,6 @@ export class HyperMod {
 
         if (msg.p.id !== MPP.client.participantId && msg.p._id !== MPP.client.participantId)
             return
-        console.log(msg)
         let a = msg.a?.trim().split(' ') ?? [],
             b = a[0]?.trim() ?? '',
             c = a[1]?.trim() ?? ''
