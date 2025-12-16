@@ -13,7 +13,7 @@ export class HyperMod {
     player = new Player
     npsTracker = new NPSTracker
     currentFile
-    version = 'v0.2.0.52'
+    version = 'v0.2.0.53'
     defaultSettings = {
         // MPP section
         forceInfNoteQuota: true,
@@ -23,12 +23,13 @@ export class HyperMod {
         showUsersWhenTyping: true,
         connectUrl: 'wss://mppclone.com',
         autoCrown: true,
+        showChatCommands: true,
         // MIDI I/O section
         midiOutputVelocityThreshold: 0,
         // Player section
         enableClientSidePlayback: false,
         enableChannelColors: true,
-        // optimizations section
+        // Optimizations section
         removeWorkerTimer: true,
         removeNameBouncing: true,
         removeNoteBouncing: true,
@@ -38,7 +39,7 @@ export class HyperMod {
         enableBufferedBlips: false,
         enableBlipLimit: true,
         blipLimit: 8,
-        // visuals section
+        // Visuals section
         removeHyperModText: false,
         removeRainbowGraphics: false,
         canvasUiOpacity: 1,
@@ -48,7 +49,7 @@ export class HyperMod {
         noteVisualizerInterval: 125,
         noteVisualizerSpeed: 100,
         enableNoteColors: true,
-        // customization section
+        // Customization section
         customization: {
             chatBlurAmount: 3, // in pixels
             nameDivRoundness: 2, // in pixels
@@ -84,11 +85,31 @@ export class HyperMod {
     lastTime = performance.now()
     prefix = '$'
     messageLoop
-    tags = {
-        log: `[HyperMod ${this.version}] - `,
-        success: `[HyperMod ${this.version}] - [✅] - `,
-        warn: `[HyperMod ${this.version}] - [⚠] - `,
-        error: `[HyperMod ${this.version}] - [❌] - `
+    hasFileDialogOpen = false
+    hasMenuOpen = false
+    get tag_log() {
+        if (this.lsSettings.showChatCommands ?? true)
+            return `[HyperMod ${this.version}] - `
+        else
+            return ''
+    }
+    get tag_success() { 
+        if (this.lsSettings.showChatCommands ?? true)
+            return `[HyperMod ${this.version}] - [✅] - ` 
+        else
+            return '[✅] » '
+    }
+    get tag_warn() { 
+        if (this.lsSettings.showChatCommands ?? true)
+            return `[HyperMod ${this.version}] - [🟨] - ` 
+        else
+            return '[🟨] » '
+    }
+    get tag_error() { 
+        if (this.lsSettings.showChatCommands ?? true)
+            return `[HyperMod ${this.version}] - [❌] - ` 
+        else
+            return '[❌] » '
     }
     commands = [
         {
@@ -100,11 +121,17 @@ export class HyperMod {
                     c = a[1]?.trim() ?? ''
 
                 if (c === '') {
-                    let initial = this.tags.success + 'Commands: '
+                    let initial = this.tag_success + 'Commands: '
                     for (let command of this.commands) {
                         initial += `\`${command.name}\`${this.commands.indexOf(command) + 1 === this.commands.length ? '' : ', '}`
                     }
-                    MPP.chat.send(this.tags.log + initial)
+                    this.sendMessage(initial)
+                } else {
+                    let command = this.commands.find(a => a.name === c.replace(this.prefix, ''))
+                    if (!command)
+                        return this.sendMessage(this.tag_error + `No such command \`${c}\``)
+                    this.sendMessage(this.tag_success + `\`\`\`${command.name}\`\`\` - *${command.description}*`)
+                    this.sendMessage(this.tag_success + `Syntax: \`\`\`${command.syntax}\`\`\``)
                 }
             }
         },
@@ -141,9 +168,9 @@ export class HyperMod {
                             str = 'unknown type'
                             break
                     }
-                    MPP.chat.send(`[✅] » \`${str}\``)
+                    this.sendMessage(`[✅] » \`${str}\``)
                 }).catch(err => {
-                    MPP.chat.send(`[❌] » \`${err}\``)
+                    this.sendMessage(`[❌] » \`${err}\``)
                 })
             }
         },
@@ -156,30 +183,30 @@ export class HyperMod {
                 if (input === '') {
                     if (this.player.tracksParsed !== 0) {
                         this.playMIDI()
-                        return MPP.chat.send(this.tags.success + `Resumed the current MIDI.`)
+                        return this.sendMessage(this.tag_success + `Resumed the current MIDI.`)
                     } else
-                        return MPP.chat.send(this.tags.error   + `Specify a MIDI to play.`)
+                        return this.sendMessage(this.tag_error   + `Specify a MIDI to play.`)
                 }
                 if (input === 'random') {
                     if (this.fileData.size == 0)
-                        return MPP.chat.send(this.tags.error + `You need to load a MIDI first. Use the HyperMod UI for this.`)
+                        return this.sendMessage(this.tag_error + `You need to load a MIDI first. Use the HyperMod UI for this.`)
                     let fn = this.fileData.keys().toArray()[Math.floor(Math.random() * this.fileData.size)]
-                    MPP.chat.send(this.tags.success + `Loading MIDI \`\`\`${fn}\`\`\`...`)
+                    this.sendMessage(this.tag_success + `Loading MIDI \`\`\`${fn}\`\`\`...`)
                     await this.loadMIDI(fn)
                     this.updateFileList()
-                    MPP.chat.send(this.tags.success + `Now playing: \`\`\`${fn}\`\`\` | ${this.player.totalEvents} event(s) loaded`)
+                    this.sendMessage(this.tag_success + `Now playing: \`\`\`${fn}\`\`\` | ${this.player.totalEvents.toLocaleString()} event${this.player.totalEvents !== 1 ? 's' : ''} loaded!`)
                     if (this.lsSettings.enableClientSidePlayback)
-                        MPP.chat.send(this.tags.success + `Client-side playback is on. This MIDI will only be heard on your end.`)
+                        this.sendMessage(this.tag_log + `Client-side playback is on. This MIDI will only be heard on your end.`)
                     this.playMIDI()
                 } else {
-                    if (!this.fileData.get(input))
-                        return MPP.chat.send(this.tags.error + `There\'s no MIDI in the file list named \`\`\`${input}\`\`\`!`)
-                    MPP.chat.send(this.tags.success + `Loading MIDI \`\`\`${input}\`\`\`...`)
-                    await this.loadMIDI(input)
+                    if (!this.fileData.has(input) && !this.fileData.has(input + '.mid'))
+                        return this.sendMessage(this.tag_error + `There\'s no MIDI in the file list named \`\`\`${input}\`\`\`!`)
+                    this.sendMessage(this.tag_success + `Loading MIDI \`\`\`${input}\`\`\`...`)
+                    await this.loadMIDI(this.fileData.has(input) ? input : input + '.mid')
                     this.updateFileList()
-                    MPP.chat.send(this.tags.success + `Now playing: \`\`\`${input}\`\`\` | ${this.player.totalEvents} event(s) loaded`)
+                    this.sendMessage(this.tag_success + `Now playing: \`\`\`${input}\`\`\` | ${this.player.totalEvents.toLocaleString()} event${this.player.totalEvents !== 1 ? 's' : ''} loaded!`)
                     if (this.lsSettings.enableClientSidePlayback)
-                        MPP.chat.send(this.tags.success + `Client-side playback is on. This MIDI will only be heard on your end.`)
+                        this.sendMessage(this.tag_log + `Client-side playback is on. This MIDI will only be heard on your end.`)
                     this.playMIDI()
                 }
             }
@@ -190,9 +217,9 @@ export class HyperMod {
             syntax: `${this.prefix}pause`,
             func: () => {
                 if (!this.player.isPlaying)
-                    return MPP.chat.send(this.tags.error + `No MIDI is currently playing!`)
+                    return this.sendMessage(this.tag_error + `No MIDI is currently playing!`)
                 this.pauseMIDI()
-                MPP.chat.send(this.tags.success + `Paused the current MIDI.`)
+                this.sendMessage(this.tag_success + `Paused the current MIDI.`)
             }
         },
         {
@@ -201,7 +228,7 @@ export class HyperMod {
             syntax: `${this.prefix}stop`,
             func: () => {
                 this.stopMIDI()
-                MPP.chat.send(this.tags.success + `Stopped playing.`)
+                this.sendMessage(this.tag_success + `Stopped playing.`)
             }
         }
     ]
@@ -243,7 +270,7 @@ export class HyperMod {
                     if (!note)
                         return
                     if (e.velocity == 0 || e.type == 0x08) {
-                        if (this.lsSettings.enableClientSidePlayback) {
+                        if (this.lsSettings.enableClientSidePlayback ?? false) {
                             MPP.piano.stop(note, p)
                         } else {
                             if (!MPP.noteQuota.spend(1)) return
@@ -251,7 +278,7 @@ export class HyperMod {
                             MPP.client.stopNote(note)
                         }
                     } else {
-                        if (this.lsSettings.enableClientSidePlayback) {
+                        if (this.lsSettings.enableClientSidePlayback ?? false) {
                             MPP.piano.play(note, e.velocity / 127, p)
                         } else {
                             if (!MPP.noteQuota.spend(1)) return
@@ -278,13 +305,55 @@ export class HyperMod {
             }
         })
     }
+    hsvToRgb(h, s, v) {
+        let r, g, b, i, f, p, q, t;
+        if (arguments.length === 1) {
+            s = h.s, v = h.v, h = h.h;
+        }
+        i = Math.floor(h * 6);
+        f = h * 6 - i;
+        p = v * (1 - s);
+        q = v * (1 - f * s);
+        t = v * (1 - (1 - f) * s);
+        switch (i % 6) {
+            case 0: r = v, g = t, b = p; break;
+            case 1: r = q, g = v, b = p; break;
+            case 2: r = p, g = v, b = t; break;
+            case 3: r = p, g = q, b = v; break;
+            case 4: r = t, g = p, b = v; break;
+            case 5: r = v, g = p, b = q; break;
+        }
+        return {
+            r: Math.round(r * 255),
+            g: Math.round(g * 255),
+            b: Math.round(b * 255)
+        }
+    }
+    sendMessage(msg) {
+        if (!(this.lsSettings.showChatCommands ?? true)) {
+            let hue = (performance.now() / 8) % 1
+            let color = this.hsvToRgb(hue, 1.0, 0.9)
+            MPP.chat.receive({
+                m: 'a',
+                a: msg,
+                p: {
+                    _id: '000000000000000000000000',
+                     id: '000000000000000000000000',
+                    color: '#' + color.r.toString(16).padStart(2, '0') + color.g.toString(16).padStart(2, '0') + color.b.toString(16).padStart(2, '0'),
+                    name: `HyperMod ${this.version}`
+                },
+                t: Date.now()
+            })
+        } else
+            MPP.chat.send(msg)
+    }
     receiveMessage(msg) {
         if (typeof MPP === 'undefined')
             return
 
-        if (msg.p.id !== MPP.client.participantId)
+        if (msg.p.id !== MPP.client.participantId && msg.p._id !== MPP.client.participantId)
             return
-
+        console.log(msg)
         let a = msg.a?.trim().split(' ') ?? [],
             b = a[0]?.trim() ?? '',
             c = a[1]?.trim() ?? ''
@@ -293,11 +362,11 @@ export class HyperMod {
             try {
                 let command = this.commands.find(c => c.name === b.replace(this.prefix, ''))
                 if (!command)
-                    return MPP.chat.send(this.tags.error + `No such command \`${b}\``)
+                    return this.sendMessage(this.tag_error + `No such command \`${b}\``)
 
                 command.func(a, msg)
             } catch (err) {
-                MPP.chat.send(this.tags.error `${err}`)
+                this.sendMessage(this.tag_error + `${err}`)
             }
         }
     }
@@ -306,32 +375,32 @@ export class HyperMod {
         this.canvas.height = innerHeight
         let hyperModButton = $('div.ugly-button#hypermod-btn')
         let buttonHue = (performance.now() / 8) % 360
-        if (!this.lsSettings.removeRainbowGraphics)
+        if (!(this.lsSettings.removeRainbowGraphics ?? false))
             hyperModButton.css({
                 'border-color': `hsl(${buttonHue}, 100%, 90%)`
             })
-        this.ctx.globalAlpha = this.lsSettings.canvasUiOpacity
+        this.ctx.globalAlpha = this.lsSettings.canvasUiOpacity ?? 1.0
         this.ctx.font = '30px monospace'
-        this.ctx.fillStyle = !this.lsSettings.removeRainbowGraphics ? `hsl(${buttonHue}, 100%, 90%)` : '#fff'
+        this.ctx.fillStyle = !(this.lsSettings.removeRainbowGraphics ?? false) ? `hsl(${buttonHue}, 100%, 90%)` : '#fff'
         this.ctx.lineWidth = 2
         this.ctx.strokeStyle = '#fff'
-        if (!this.lsSettings.removeHyperModText) {
+        if (!(this.lsSettings.removeHyperModText ?? false)) {
             this.ctx.textAlign = 'center'
             this.ctx.fillText('HyperMod v2', this.canvas.width / 2, 130)
             this.ctx.fillStyle = '#ffffff6b'
             this.ctx.font = 'italic 20px monospace'
             this.ctx.fillText(`(${this.version})`, this.canvas.width / 2, 160)
             this.ctx.font = '30px monospace'
-            this.ctx.fillStyle = !this.lsSettings.removeRainbowGraphics ? `hsl(${buttonHue}, 100%, 90%)` : '#fff'
+            this.ctx.fillStyle = !(this.lsSettings.removeRainbowGraphics ?? false) ? `hsl(${buttonHue}, 100%, 90%)` : '#fff'
         }
         this.ctx.font = '20px monospace'
         this.ctx.textAlign = 'right'
         this.ctx.fillText(`${(this.fps ?? 0).toFixed(1)} FPS`, this.canvas.width - 20, this.canvas.height - 100)
-        if (this.lsSettings.trackNPS)
+        if (this.lsSettings.trackNPS ?? false)
             this.ctx.fillText(`${(this.npsTracker?.getNPS() ?? 0).toFixed(1)} NPS`, this.canvas.width - 20, this.canvas.height - 120)
         this.frames++;
         this.now = performance.now();
-        if (this.lsSettings.enableFpsGraph) {
+        if (this.lsSettings.enableFpsGraph ?? true) {
             let w = 300
             let h = 150
             let sx = 100
@@ -345,7 +414,7 @@ export class HyperMod {
             }
             this.ctx.strokeRect(sx, sy, w, h)
         }
-        if (this.lsSettings.enableNoteVisualizer) {
+        if (this.lsSettings.enableNoteVisualizer ?? false) {
             let w = 300
             let h = 150
             let sx = this.canvas.width - w - 100
@@ -353,7 +422,7 @@ export class HyperMod {
             this.ctx.strokeRect(sx, sy, w, h)
         }
         let now = performance.now()
-        if (now - this.lastTime >= this.lsSettings.fpsCalculationInterval) {
+        if (now - this.lastTime >= (this.lsSettings.fpsCalculationInterval ?? 125)) {
             this.fps = (this.frames * 1000) / (now - this.lastTime);
             this.frames = 0;
             this.lastTime = now;
@@ -482,6 +551,7 @@ export class HyperMod {
         return new Promise((resolve, reject) => {
             let input = document.createElement('input');
             input.type = 'file', input.accept = '.mid,.midi'
+            this.hasFileDialogOpen = true
             input.addEventListener('change', async e => {
                 try {
                     for (let file of e.target.files) {
@@ -492,11 +562,41 @@ export class HyperMod {
                     reject(err)
                 }
                 this.updateFileList()
+                this.hasFileDialogOpen = false
             })
             input.click();
             input.remove()
             resolve()
         });
+    }
+    toggleMenu() {
+        let div = $('.hypermod#main-menu, .hypermod#tabs')
+        div.each((i, e) => {
+            if (e.id === 'tabs')
+                if (e.style.display == 'flex') {
+                    $(e).css({
+                        display: 'none'
+                    })
+                    this.hasMenuOpen = false
+                } else {
+                    $(e).css({
+                        display: 'flex'
+                    })
+                    this.hasMenuOpen = true
+                }
+            else
+                if (e.style.display == 'block') {
+                    $(e).css({
+                        display: 'none'
+                    })
+                    this.hasMenuOpen = false
+                } else {
+                    $(e).css({
+                        display: 'block'
+                    })
+                    this.hasMenuOpen = true
+                }
+        })
     }
     async loadUI() {
         let html = ''
@@ -546,26 +646,7 @@ export class HyperMod {
                     let div = $('.hypermod#main-menu, .hypermod#tabs')
                     if ($('.chatting').length != 0)
                         return
-                    div.each((i, e) => {
-                        if (e.id === 'tabs')
-                            e.style.display == 'flex' ?
-                                $(e).css({
-                                    display: 'none'
-                                })
-                            :
-                                $(e).css({
-                                    display: 'flex'
-                                })
-                        else
-                            e.style.display == 'block' ?
-                                $(e).css({
-                                    display: 'none'
-                                })
-                            :
-                                $(e).css({
-                                    display: 'block'
-                                })
-                    })
+                    this.toggleMenu()
                     break
             }
         })

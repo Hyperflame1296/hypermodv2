@@ -3229,39 +3229,71 @@ $(function() {
                 gTypingTimeout = undefined
             }, 2000)
         })
-        $('#chat-input').on('keydown', function (evt) {
-            if (evt.keyCode == 13) {
-                if (gClient.isConnected()) {
-                    var message = $(this).val()
-                    if (message.length == 0) {
-                        if (gIsDming) {
-                            chat.endDM()
+        $('#chat-input').on('keydown', e => {
+            switch (e.code) {
+                case 'ArrowUp': // up
+                    if (chat.inputHistoryIndex <= 0)
+                        return
+                    chat.inputHistoryIndex -= 1
+                    $(e.target).val(chat.inputHistory[chat.inputHistoryIndex] ?? '')
+                    if (!gNoPreventDefault) e.preventDefault()
+                    e.stopPropagation()
+                    break
+                case 'ArrowDown': // down
+                    if (chat.inputHistoryIndex >= chat.inputHistory.length)
+                        return
+                    chat.inputHistoryIndex += 1
+                    $(e.target).val(chat.inputHistory[chat.inputHistoryIndex] ?? '')
+                    if (!gNoPreventDefault) e.preventDefault()
+                    e.stopPropagation()
+                    break
+                case 'Enter':
+                    if (gClient.isConnected()) {
+                        var message = $(e.target).val()
+                        if (message.length == 0) {
+                            if (gIsDming) {
+                                chat.endDM()
+                            }
+                            if (gIsReplying) {
+                                chat.cancelReply()
+                            }
+                            setTimeout(function () {
+                                chat.blur()
+                            }, 100)
+                        } else {
+                            if (!(gHyperMod.lsSettings.showChatCommands ?? true) && message.startsWith(gHyperMod.prefix) && message !== gHyperMod.prefix) {
+                                let msg = {
+                                    m: 'a',
+                                    a: message,
+                                    p: { ...gClient.user, _id: gClient.participantId, id: gClient.participantId },
+                                    t: Date.now()
+                                }
+                                chat.receive(msg)
+                                gHyperMod.receiveMessage(msg)
+                            } else
+                                chat.send(message)
+                            chat.inputHistory.push(message)
+						    chat.inputHistoryIndex = chat.inputHistory.length
+                            $(e.target).val('')
+                            stopTyping()
+                            updateTypingStatus()
+                            setTimeout(function () {
+                                chat.blur()
+                            }, 100)
                         }
-                        if (gIsReplying) {
-                            chat.cancelReply()
-                        }
-                        setTimeout(function () {
-                            chat.blur()
-                        }, 100)
-                    } else {
-                        chat.send(message)
-                        $(this).val('')
-                        stopTyping()
-                        updateTypingStatus()
-                        setTimeout(function () {
-                            chat.blur()
-                        }, 100)
                     }
-                }
-                if (!gNoPreventDefault) evt.preventDefault()
-                evt.stopPropagation()
-            } else if (evt.keyCode == 27) {
-                chat.blur()
-                if (!gNoPreventDefault) evt.preventDefault()
-                evt.stopPropagation()
-            } else if (evt.keyCode == 9) {
-                if (!gNoPreventDefault) evt.preventDefault()
-                evt.stopPropagation()
+                    if (!gNoPreventDefault) e.preventDefault()
+                    e.stopPropagation()
+                    break
+                case 'Escape':
+                    chat.blur()
+                    if (!gNoPreventDefault) e.preventDefault()
+                    e.stopPropagation()
+                    break
+                case 'Tab':
+                    if (!gNoPreventDefault) e.preventDefault()
+                    e.stopPropagation()
+                    break
             }
         })
 
@@ -3289,6 +3321,8 @@ $(function() {
         var messageCache = [];
 
         ({
+            inputHistoryIndex: 0,
+            inputHistory: [],
             startDM: function (part) {
                 gIsDming = true
                 gDmParticipant = part

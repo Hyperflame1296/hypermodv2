@@ -3,28 +3,8 @@ export default (function(hyperMod) {
     return ({
         '.hypermod#main-menu': {},
         '.ugly-button#hypermod-btn': {
-            click: e => {
-                let div = $('.hypermod#main-menu, .hypermod#tabs')
-                div.each((i, e) => {
-                    if (e.id === 'tabs')
-                        e.style.display == 'flex' ?
-                            $(e).css({
-                                display: 'none'
-                            })
-                        :
-                            $(e).css({
-                                display: 'flex'
-                            })
-                    else
-                        e.style.display == 'block' ?
-                            $(e).css({
-                                display: 'none'
-                            })
-                        :
-                            $(e).css({
-                                display: 'block'
-                            })
-                })
+            click: () => {
+                hyperMod.toggleMenu()
             }
         },
         '.hypermod#tabs .hypermod': {
@@ -58,26 +38,7 @@ export default (function(hyperMod) {
         '.hypermod.hm-button#exit-button': {
             click: e => {
                 let div = $('.hypermod#main-menu, .hypermod#tabs')
-                div.each((i, e) => {
-                    if (e.id === 'tabs')
-                        e.style.display == 'flex' ?
-                            $(e).css({
-                                display: 'none'
-                            })
-                        :
-                            $(e).css({
-                                display: 'flex'
-                            })
-                    else
-                        e.style.display == 'block' ?
-                            $(e).css({
-                                display: 'none'
-                            })
-                        :
-                            $(e).css({
-                                display: 'block'
-                            })
-                })
+                hyperMod.toggleMenu()
             }
         },
         '.hypermod.hm-button#reconnect-button': {
@@ -131,9 +92,8 @@ export default (function(hyperMod) {
         },
         '.hypermod.hm-button#add-midi-button': {
             click: async e => {
-                if (hyperMod.player.isPlaying)
+                if (hyperMod.hasFileDialogOpen)
                     return
-
                 await hyperMod.openMIDIDialog()
             }
         },
