@@ -13,7 +13,7 @@ export class HyperMod {
     player = new Player
     npsTracker = new NPSTracker
     currentFile
-    version = 'v0.2.0.53'
+    version = 'v0.2.0.54'
     defaultSettings = {
         // MPP section
         forceInfNoteQuota: true,
@@ -550,7 +550,7 @@ export class HyperMod {
     async openMIDIDialog() {
         return new Promise((resolve, reject) => {
             let input = document.createElement('input');
-            input.type = 'file', input.accept = '.mid,.midi'
+            input.type = 'file', input.accept = '.mid'
             this.hasFileDialogOpen = true
             input.addEventListener('change', async e => {
                 try {
