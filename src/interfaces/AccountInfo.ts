@@ -1,7 +1,7 @@
 // declaration
 export interface AccountInfo {
     type: 'discord'
-    username: tring
+    username: string
     discriminator: string
     avatar: string
 }

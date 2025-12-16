@@ -7,7 +7,7 @@ import type { ParticipantInfo } from './ParticipantInfo.js'
 import type { UserPermissions } from './UserPermissions.js'
 
 // declaration
-export interface IncomingMessageMap {
+export interface IncomingMessage {
     'a': {
         m: 'a'
         id: string

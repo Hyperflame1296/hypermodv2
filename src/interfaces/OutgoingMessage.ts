@@ -7,7 +7,7 @@ import type { ChannelSettings } from './ChannelSettings.js'
 import type { Target } from '../types/Target.js'
 
 // declaration
-export interface OutgoingMessageMap {
+export interface OutgoingMessage {
     // basic messages
     'a': {
         m: 'a'

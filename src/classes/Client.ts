@@ -5,8 +5,8 @@ import { AsyncFunction } from '../modules/util.js'
 
 // import: local interfaces
 import type { Login } from '../interfaces/Login.js'
-import type { IncomingMessageMap } from '../interfaces/IncomingMessageMap.js'
-import type { OutgoingMessageMap } from '../interfaces/OutgoingMessageMap.js'
+import type { IncomingMessage } from '../interfaces/IncomingMessage.js'
+import type { OutgoingMessage } from '../interfaces/OutgoingMessage.js'
 import type { AccountInfo } from '../interfaces/AccountInfo.js'
 import type { UserPermissions } from '../interfaces/UserPermissions.js'
 
