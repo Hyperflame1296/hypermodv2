@@ -13,7 +13,7 @@ export class HyperMod {
     player = new Player
     npsTracker = new NPSTracker
     currentFile
-    version = 'v0.2.0.66'
+    version = 'v0.2.0.67 (why)'
     defaultSettings = {
         // MPP section
         forceInfNoteQuota: true,
@@ -30,6 +30,7 @@ export class HyperMod {
         // Player section
         enableClientSidePlayback: false,
         enableChannelColors: true,
+        excludeDrumChannel: true,
         // Optimizations section
         removeWorkerTimer: true,
         removeNameBouncing: true,
@@ -281,7 +282,10 @@ export class HyperMod {
             let note
             let ch = (e.channel ?? 0) % 16
             if (!p) p = { ...MPP.client.getOwnParticipant() }
-            p.color = this.channelColors[ch]
+            if (this.lsSettings.enableChannelColors)
+                p.color = this.channelColors[ch]
+            if (e.channel == 9 && (this.lsSettings.excludeDrumChannel ?? true))
+                return
             switch (e.type) {
                 case 0x08:
                 case 0x09: // note event
