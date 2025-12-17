@@ -13,7 +13,7 @@ export class HyperMod {
     player = new Player
     npsTracker = new NPSTracker
     currentFile
-    version = 'v0.2.0.55'
+    version = 'v0.2.0.58'
     defaultSettings = {
         // MPP section
         forceInfNoteQuota: true,
@@ -47,7 +47,6 @@ export class HyperMod {
         fpsCalculationInterval: 125,
         enableNoteVisualizer: false,
         noteVisualizerInterval: 125,
-        noteVisualizerSpeed: 100,
         enableNoteColors: true,
         // Customization section
         customization: {
@@ -232,6 +231,22 @@ export class HyperMod {
             }
         }
     ]
+    visualizer = {
+        visibleNotes: [],
+        noteOn(note, participant, t = Date.now()) {
+            this.visibleNotes.push({
+                n: note,
+                c: participant?.color ?? '#777777',
+                t: t / 1000
+            })
+        },
+        noteOff(note, t = Date.now()) {
+            let n = this.visibleNotes.findLast(n => n.n === note && n.l === undefined)
+            if (!n)
+                return
+            n.l = t / 1000 - n.t
+        }
+    }
     constructor() {
         if (typeof MPP !== 'undefined' && MPP.addons?.hyperMod)
             throw Error`no...`
@@ -254,15 +269,14 @@ export class HyperMod {
         }
         $(this.canvas).addClass('hypermod')
         let keys = ['a-1', 'as-1', 'b-1', 'c0', 'cs0', 'd0', 'ds0', 'e0', 'f0', 'fs0', 'g0', 'gs0', 'a0', 'as0', 'b0', 'c1', 'cs1', 'd1', 'ds1', 'e1', 'f1', 'fs1', 'g1', 'gs1', 'a1', 'as1', 'b1', 'c2', 'cs2', 'd2', 'ds2', 'e2', 'f2', 'fs2', 'g2', 'gs2', 'a2', 'as2', 'b2', 'c3', 'cs3', 'd3', 'ds3', 'e3', 'f3', 'fs3', 'g3', 'gs3', 'a3', 'as3', 'b3', 'c4', 'cs4', 'd4', 'ds4', 'e4', 'f4', 'fs4', 'g4', 'gs4', 'a4', 'as4', 'b4', 'c5', 'cs5', 'd5', 'ds5', 'e5', 'f5', 'fs5', 'g5', 'gs5', 'a5', 'as5', 'b5', 'c6', 'cs6', 'd6', 'ds6', 'e6', 'f6', 'fs6', 'g6', 'gs6', 'a6', 'as6', 'b6', 'c7']
-        let p = typeof MPP !== 'undefined' ? MPP.client.getOwnParticipant() : undefined
+        let p = typeof MPP !== 'undefined' ? { ...MPP.client.getOwnParticipant() } : undefined
         this.player.on('midiEvent', e => {
             if (typeof MPP === 'undefined') 
                 return
             let note
             let ch = (e.channel ?? 0) % 16
-            if (!p) p = MPP.client.getOwnParticipant()
+            if (!p) p ={ ...MPP.client.getOwnParticipant() }
             p.color = this.channelColors[ch]
-            
             switch (e.type) {
                 case 0x08:
                 case 0x09: // note event
@@ -351,8 +365,9 @@ export class HyperMod {
         if (typeof MPP === 'undefined')
             return
 
-        if (msg.p.id !== MPP.client.participantId && msg.p._id !== MPP.client.participantId)
+        if (msg.p._id !== MPP.client.getOwnParticipant()._id) // use `getOwnParticipant` to allow for offline commands
             return
+
         let a = msg.a?.trim().split(' ') ?? [],
             b = a[0]?.trim() ?? '',
             c = a[1]?.trim() ?? ''
@@ -414,10 +429,31 @@ export class HyperMod {
             this.ctx.strokeRect(sx, sy, w, h)
         }
         if (this.lsSettings.enableNoteVisualizer ?? false) {
+            this.ctx.save()
             let w = 300
             let h = 150
             let sx = this.canvas.width - w - 100
             let sy = parseInt($('div#piano')[0].style.marginTop) - (h + 50)
+            let t = Date.now() / 1000
+            this.ctx.beginPath()
+            this.ctx.rect(sx, sy, w, h)
+            this.ctx.clip()
+            for (let i = this.visualizer.visibleNotes.length - 1; i >= 0; i--) {
+                let note = this.visualizer.visibleNotes[i]
+                let x = sx + w - ((t - note.t) * this.lsSettings.noteVisualizerInterval)
+                let y = sy + (88 - note.n) * (h / 88)
+                if (note.l === undefined && (t - note.t) > 3)
+                    note.l = 3
+                let nw = (note.l ?? (t - note.t)) * this.lsSettings.noteVisualizerInterval
+                if (x + nw < sx) {
+                    this.visualizer.visibleNotes.splice(i, 1)
+                    continue
+                }
+                this.ctx.fillStyle = note.c
+                this.ctx.fillRect(x, y, nw, h / 88)
+            }
+            this.ctx.closePath()
+            this.ctx.restore()
             this.ctx.strokeRect(sx, sy, w, h)
         }
         let now = performance.now()
@@ -550,6 +586,7 @@ export class HyperMod {
         return new Promise((resolve, reject) => {
             let input = document.createElement('input');
             input.type = 'file', input.accept = '.mid'
+            input.multiple = true
             this.hasFileDialogOpen = true
             input.addEventListener('change', async e => {
                 try {

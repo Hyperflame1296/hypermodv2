@@ -13,6 +13,7 @@ import { Rect } from './classes/Rect.js'
 import type { AudioVoice } from './interfaces/AudioVoice.js'
 import type { SoundPack } from './interfaces/SoundPack.js'
 import type { Blip } from './interfaces/Blip.js'
+import type { ParticipantInfo } from './interfaces/ParticipantInfo.js'
 
 // import: local constants
 import { MIDI_KEY_MAP } from './constants.js'
@@ -992,6 +993,7 @@ $(function() {
         }
         bufferPlay(note, vol, participant, delay_ms=0) {
             if (gHyperMod.lsSettings.trackNPS ?? false) gHyperMod.npsTracker.noteOn();
+            if (gHyperMod.lsSettings.enableNoteVisualizer ?? false) gHyperMod.visualizer.noteOn(MIDI_KEY_MAP[note.n] ?? 0, participant, Date.now() + delay_ms)
             if (!this.keys.hasOwnProperty(note) || !participant) return;
             const key = this.keys[note];
             key.lastHitTime = performance.now() + delay_ms;
@@ -1093,6 +1095,7 @@ $(function() {
                 if ((gHyperMod.lsSettings.enableBlipLimit ?? true) && key.blips.length >= limit)
                     key.blips.shift()
                 key.blips.push({ time: key.timePlayed, color: participant.color })
+                if (gHyperMod.lsSettings.enableNoteVisualizer ?? false) gHyperMod.visualizer.noteOn(MIDI_KEY_MAP[note] ?? 0, participant, Date.now() + delay_ms)
                 // bounce player's name, if enabled
                 if (!(gHyperMod.lsSettings.removeNameBouncing ?? true)) {
                     var jq_namediv = $(participant.nameDiv)
@@ -1109,6 +1112,7 @@ $(function() {
                     if ((gHyperMod.lsSettings.enableBlipLimit ?? true) && key.blips.length >= limit)
                         key.blips.shift()
                     key.blips.push({ time: key.timePlayed, color: participant.color })
+                    if (gHyperMod.lsSettings.enableNoteVisualizer ?? false) gHyperMod.visualizer.noteOn(MIDI_KEY_MAP[note] ?? 0, participant, Date.now() + delay_ms)
                     // bounce player's name, if enabled
                     if (!(gHyperMod.lsSettings.removeNameBouncing ?? true)) {
                         var jq_namediv = $(participant.nameDiv)
@@ -1124,6 +1128,7 @@ $(function() {
             var key = this.keys[note]
             if (key.loaded && this.audio.volume > 0 && !(gHyperMod.lsSettings.disableAudioEngine ?? false)) this.audio.stop(key.note, delay_ms, participant.id)
             gMidi.noteOff(key.note, delay_ms, participant.id)
+            if (gHyperMod.lsSettings.enableNoteVisualizer ?? false) gHyperMod.visualizer.noteOff(MIDI_KEY_MAP[note] ?? 0, Date.now() + delay_ms)
         }
     }
     var gPiano = new Piano($('#piano')[0]).init()
@@ -1165,11 +1170,11 @@ $(function() {
             this.heldNotes[id] = true
             if ((this.sustain || this.autoSustain) && !enableSynth)
                 this.sustainNotes[id] = true;
-
+            let part = gClient.getOwnParticipant()
             if (gHyperMod.lsSettings.enableBufferedBlips ?? false)
-                gPiano.bufferPlay(id, vol !== undefined ? vol : DEFAULT_VELOCITY, gClient.getOwnParticipant(), 0)
+                gPiano.bufferPlay(id, vol !== undefined ? vol : DEFAULT_VELOCITY, part, 0)
             else
-                gPiano.play(id, vol !== undefined ? vol : DEFAULT_VELOCITY, gClient.getOwnParticipant(), 0)
+                gPiano.play(id, vol !== undefined ? vol : DEFAULT_VELOCITY, part, 0)
             gClient.startNote(id, vol)
             gNoteQuota.spend(1)
         }
@@ -1622,7 +1627,7 @@ $(function() {
     // Playing notes
     gClient.on('n', function (msg) {
         var t = msg.t - gClient.serverTimeOffset + TIMING_TARGET - Date.now()
-        var participant = gClient.findParticipantById(msg.p)
+        var participant: ParticipantInfo = gClient.findParticipantById(msg.p)
         if (gPianoMutes.indexOf(participant._id) !== -1) return
         for (var i = 0; i < msg.n.length; i++) {
             var note = msg.n[i]
@@ -1630,10 +1635,10 @@ $(function() {
             if (ms < 0) {
                 ms = 0
             } else if (ms > 10000) continue
-            if (note.s) {
+            let vel = typeof note.v !== 'undefined' ? parseFloat(note.v) : DEFAULT_VELOCITY
+            if (note.s == 1 || vel <= 0) {
                 gPiano.stop(note.n, participant, ms)
             } else {
-                var vel = typeof note.v !== 'undefined' ? parseFloat(note.v) : DEFAULT_VELOCITY
                 if (!vel) vel = 0
                 else if (vel < 0) vel = 0
                 else if (vel > 1) vel = 1;
@@ -3248,39 +3253,55 @@ $(function() {
                     e.stopPropagation()
                     break
                 case 'Enter':
-                    if (gClient.isConnected()) {
-                        var message = $(e.target).val()
-                        if (message.length == 0) {
-                            if (gIsDming) {
-                                chat.endDM()
+                    var message = $(e.target).val()
+                    if (message.length == 0) {
+                        if (gIsDming) {
+                            chat.endDM()
+                        }
+                        if (gIsReplying) {
+                            chat.cancelReply()
+                        }
+                        setTimeout(function () {
+                            chat.blur()
+                        }, 100)
+                    } else {
+                        if (
+                            (
+                                !(gHyperMod.lsSettings.showChatCommands ?? true) || 
+                                !(gClient.isConnected() && gClient.channel)
+                            ) && 
+                            message.startsWith(gHyperMod.prefix) && 
+                            message !== gHyperMod.prefix
+                        ) {
+                            let msg = {
+                                m: 'a',
+                                a: message,
+                                p: { ...gClient.getOwnParticipant() },
+                                t: Date.now()
                             }
-                            if (gIsReplying) {
-                                chat.cancelReply()
-                            }
-                            setTimeout(function () {
-                                chat.blur()
-                            }, 100)
+                            chat.receive(msg)
+                            gHyperMod.receiveMessage(msg)
                         } else {
-                            if (!(gHyperMod.lsSettings.showChatCommands ?? true) && message.startsWith(gHyperMod.prefix) && message !== gHyperMod.prefix) {
+                            if (gClient.isConnected() && gClient.channel)
+                                chat.send(message)
+                            else {
                                 let msg = {
                                     m: 'a',
                                     a: message,
-                                    p: { ...gClient.user, _id: gClient.participantId, id: gClient.participantId },
+                                    p: { ...gClient.getOwnParticipant() },
                                     t: Date.now()
                                 }
                                 chat.receive(msg)
-                                gHyperMod.receiveMessage(msg)
-                            } else
-                                chat.send(message)
-                            chat.inputHistory.push(message)
-						    chat.inputHistoryIndex = chat.inputHistory.length
-                            $(e.target).val('')
-                            stopTyping()
-                            updateTypingStatus()
-                            setTimeout(function () {
-                                chat.blur()
-                            }, 100)
+                            }
                         }
+                        chat.inputHistory.push(message)
+					    chat.inputHistoryIndex = chat.inputHistory.length
+                        $(e.target).val('')
+                        stopTyping()
+                        updateTypingStatus()
+                        setTimeout(function () {
+                            chat.blur()
+                        }, 100)
                     }
                     if (!gNoPreventDefault) e.preventDefault()
                     e.stopPropagation()

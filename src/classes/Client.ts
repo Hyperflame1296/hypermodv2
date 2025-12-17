@@ -9,6 +9,8 @@ import type { IncomingMessage } from '../interfaces/IncomingMessage.js'
 import type { OutgoingMessage } from '../interfaces/OutgoingMessage.js'
 import type { AccountInfo } from '../interfaces/AccountInfo.js'
 import type { UserPermissions } from '../interfaces/UserPermissions.js'
+import type { ParticipantInfo } from '../interfaces/ParticipantInfo.js'
+import type { ChannelSettings } from '../interfaces/ChannelSettings.js'
 
 // code
 WebSocket.prototype.send = new Proxy(WebSocket.prototype.send, {
@@ -45,7 +47,7 @@ export class Client extends EventEmitter {
     user: any
     participantId: string
     channel: any
-    ppl: Record<string, any> = {}
+    ppl: Record<string, ParticipantInfo> = {}
     connectionTime: number
     connectionAttempts: number = 0
     desiredChannelId: string
@@ -321,9 +323,6 @@ export class Client extends EventEmitter {
         this.desiredChannelSettings = set || this.desiredChannelSettings || undefined
         this.sendArray([{ m: 'ch', _id: this.desiredChannelId, set: this.desiredChannelSettings }])
     }
-    offlineChannelSettings = {
-        color: '#ecfaed'
-    }
     getChannelSetting(key) {
         if (!this.isConnected() || !this.channel || !this.channel.settings) {
             return this.offlineChannelSettings[key]
@@ -341,15 +340,19 @@ export class Client extends EventEmitter {
             this.sendArray([{ m: 'chset', set: this.desiredChannelSettings }])
         }
     }
-    offlineParticipant = {
-        _id: '',
-        name: '',
-        color: '#777'
+    offlineParticipant: ParticipantInfo = {
+        _id: '000000000000000000000000',
+        name: 'You',
+        color: '#777777'
     }
-    getOwnParticipant() {
+    offlineChannelSettings: ChannelSettings = {
+        color: '#220022',
+        color2: '#000022'
+    }
+    getOwnParticipant(): ParticipantInfo {
         return this.findParticipantById(this.participantId)
     }
-    setParticipants(ppl) {
+    setParticipants(ppl: ParticipantInfo[]) {
         // remove participants who left
         for (var id in this.ppl) {
             if (!this.ppl.hasOwnProperty(id)) continue
@@ -483,9 +486,9 @@ export class Client extends EventEmitter {
     setLoginInfo(loginInfo) {
         this.loginInfo = loginInfo
     }
-    on<K extends keyof IncomingMessageMap>(
+    on<K extends keyof IncomingMessage>(
         en: K,
-        fn: (msg: IncomingMessageMap[K]) => any
+        fn: (msg: IncomingMessage[K]) => any
     ): this {
         super.on(en, fn)
         return this
@@ -498,9 +501,9 @@ export class Client extends EventEmitter {
             return false
         }
     }
-    off<K extends keyof IncomingMessageMap>(
+    off<K extends keyof IncomingMessage>(
         en: K,
-        fn: (msg: IncomingMessageMap[K]) => any
+        fn: (msg: IncomingMessage[K]) => any
     ): this {
         super.off(en, fn)
         return this
