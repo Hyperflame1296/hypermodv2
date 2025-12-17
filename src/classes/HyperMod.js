@@ -13,7 +13,7 @@ export class HyperMod {
     player = new Player
     npsTracker = new NPSTracker
     currentFile
-    version = 'v0.2.0.67 (why)'
+    version = 'v0.2.0.68'
     defaultSettings = {
         // MPP section
         forceInfNoteQuota: true,
@@ -181,38 +181,71 @@ export class HyperMod {
         },
         {
             name: 'play',
-            description: 'Play a MIDI from the loaded MIDI list.',
+            description: 'Play a MIDI from the MIDI list.',
             syntax: `${this.prefix}play [midi]`,
             func: async(a, msg) => {
                 let input = a.slice(1).join(' ').trim()
-                if (input === '') {
-                    if (this.player.tracksParsed !== 0) {
+                switch (input) {
+                    case '':
+                        if (this.player.tracksParsed !== 0) {
+                            this.playMIDI()
+                            return this.sendMessage(this.tag_success + `Resumed the current MIDI.`)
+                        } else
+                            return this.sendMessage(this.tag_error   + `Specify a MIDI to play.`)
+                        break
+                    case 'random':
+                        if (this.fileData.size == 0)
+                            return this.sendMessage(this.tag_error + `You need to add a MIDI first. Use the HyperMod UI for this.`)
+                        let fn = this.fileData.keys().toArray()[Math.floor(Math.random() * this.fileData.size)]
+                        this.sendMessage(this.tag_success + `Loading MIDI \`\`\`${fn}\`\`\`...`)
+                        await this.loadMIDI(fn)
+                        this.updateFileList()
+                        this.sendMessage(this.tag_success + `Now playing: \`\`\`${fn}\`\`\` | \`${this.player.totalEvents.toLocaleString()}\` event${this.player.totalEvents !== 1 ? 's' : ''} loaded!`)
+                        if (this.lsSettings.enableClientSidePlayback)
+                            this.sendMessage(this.tag_log + `Client-side playback is on. This MIDI will only be heard on your end.`)
                         this.playMIDI()
-                        return this.sendMessage(this.tag_success + `Resumed the current MIDI.`)
-                    } else
-                        return this.sendMessage(this.tag_error   + `Specify a MIDI to play.`)
+                        break
+                    default:
+                        if (!this.fileData.has(input) && !this.fileData.has(input + '.mid'))
+                            return this.sendMessage(this.tag_error + `There\'s no MIDI in the file list named \`\`\`${input}\`\`\`!`)
+                        this.sendMessage(this.tag_success + `Loading MIDI \`\`\`${input}\`\`\`...`)
+                        await this.loadMIDI(this.fileData.has(input) ? input : input + '.mid')
+                        this.updateFileList()
+                        this.sendMessage(this.tag_success + `Now playing: \`\`\`${input}\`\`\` | \`${this.player.totalEvents.toLocaleString()}\` event${this.player.totalEvents !== 1 ? 's' : ''} loaded!`)
+                        if (this.lsSettings.enableClientSidePlayback)
+                            this.sendMessage(this.tag_log + `Client-side playback is on. This MIDI will only be heard on your end.`)
+                        this.playMIDI()
+                        break
                 }
-                if (input === 'random') {
-                    if (this.fileData.size == 0)
-                        return this.sendMessage(this.tag_error + `You need to load a MIDI first. Use the HyperMod UI for this.`)
-                    let fn = this.fileData.keys().toArray()[Math.floor(Math.random() * this.fileData.size)]
-                    this.sendMessage(this.tag_success + `Loading MIDI \`\`\`${fn}\`\`\`...`)
-                    await this.loadMIDI(fn)
-                    this.updateFileList()
-                    this.sendMessage(this.tag_success + `Now playing: \`\`\`${fn}\`\`\` | \`${this.player.totalEvents.toLocaleString()}\` event${this.player.totalEvents !== 1 ? 's' : ''} loaded!`)
-                    if (this.lsSettings.enableClientSidePlayback)
-                        this.sendMessage(this.tag_log + `Client-side playback is on. This MIDI will only be heard on your end.`)
-                    this.playMIDI()
-                } else {
-                    if (!this.fileData.has(input) && !this.fileData.has(input + '.mid'))
-                        return this.sendMessage(this.tag_error + `There\'s no MIDI in the file list named \`\`\`${input}\`\`\`!`)
-                    this.sendMessage(this.tag_success + `Loading MIDI \`\`\`${input}\`\`\`...`)
-                    await this.loadMIDI(this.fileData.has(input) ? input : input + '.mid')
-                    this.updateFileList()
-                    this.sendMessage(this.tag_success + `Now playing: \`\`\`${input}\`\`\` | \`${this.player.totalEvents.toLocaleString()}\` event${this.player.totalEvents !== 1 ? 's' : ''} loaded!`)
-                    if (this.lsSettings.enableClientSidePlayback)
-                        this.sendMessage(this.tag_log + `Client-side playback is on. This MIDI will only be heard on your end.`)
-                    this.playMIDI()
+            }
+        },
+        {
+            name: 'load',
+            description: 'Load a MIDI from the MIDI list.',
+            syntax: `${this.prefix}load [midi]`,
+            func: async(a, msg) => {
+                let input = a.slice(1).join(' ').trim()
+                switch (input) {
+                    case '':
+                        return this.sendMessage(this.tag_error + `Specify a MIDI to load.`)
+                        break
+                    case 'random':
+                        if (this.fileData.size == 0)
+                            return this.sendMessage(this.tag_error + `You need to add a MIDI first. Use the HyperMod UI for this.`)
+                        let fn = this.fileData.keys().toArray()[Math.floor(Math.random() * this.fileData.size)]
+                        this.sendMessage(this.tag_success + `Loading MIDI \`\`\`${fn}\`\`\`...`)
+                        await this.loadMIDI(fn)
+                        this.updateFileList()
+                        this.sendMessage(this.tag_success + `Loaded MIDI: \`\`\`${fn}\`\`\` | \`${this.player.totalEvents.toLocaleString()}\` event${this.player.totalEvents !== 1 ? 's' : ''} loaded!`)
+                        break
+                    default:
+                        if (!this.fileData.has(input) && !this.fileData.has(input + '.mid'))
+                            return this.sendMessage(this.tag_error + `There\'s no MIDI in the file list named \`\`\`${input}\`\`\`!`)
+                        this.sendMessage(this.tag_success + `Loading MIDI \`\`\`${input}\`\`\`...`)
+                        await this.loadMIDI(this.fileData.has(input) ? input : input + '.mid')
+                        this.updateFileList()
+                        this.sendMessage(this.tag_success + `Loaded MIDI: \`\`\`${input}\`\`\` | \`${this.player.totalEvents.toLocaleString()}\` event${this.player.totalEvents !== 1 ? 's' : ''} loaded!`)
+                        break
                 }
             }
         },
@@ -336,7 +369,9 @@ export class HyperMod {
         })
     }
     sendMessage(msg) {
-        if (!(this.lsSettings.showChatCommands ?? true)) {
+        if (typeof MPP === 'undefined')
+            return false
+        if (!(this.lsSettings.showChatCommands ?? true) || !MPP.client.isConnected()) {
             let hue = (performance.now() / 8) % 1
             MPP.chat.receive({
                 m: 'a',
@@ -351,11 +386,13 @@ export class HyperMod {
             })
         } else
             MPP.chat.send(msg)
+        return true
     }
     receiveMessage(msg) {
         if (typeof MPP === 'undefined')
             return
 
+        console.log(msg)
         if (msg.p._id !== MPP.client.getOwnParticipant()._id) // use `getOwnParticipant` to allow for offline commands
             return
 
@@ -467,6 +504,8 @@ export class HyperMod {
     }
     async loadMIDI(fn) {
         let data = this.fileData.get(fn) ?? throw new Error(`There is no MIDI named \'${fn}\' loaded into HyperMod.`)
+        if (this.currentFile === fn)
+            return false
         this.currentFile = fn
         return await this.player.loadArrayBuffer(data)
     }
@@ -594,10 +633,10 @@ export class HyperMod {
                         if (!file) continue;
                         this.fileData.set(file.name,  await file.arrayBuffer())
                     }
+                    this.updateFileList()
                 } catch (err) {
                     reject(err)
                 }
-                this.updateFileList()
                 this.hasFileDialogOpen = false
             })
             input.click();
