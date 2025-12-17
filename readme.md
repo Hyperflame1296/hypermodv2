@@ -18,6 +18,7 @@ now, you can just do `node index` and it open HyperModV2 at [localhost:8080](htt
 - the ability to use the up/down arrow keys to cycle through previous chat messages
 - the ability to send messages & use HyperMod commands in Offline Mode
 - the ability to hide HyperMod commands from other people
+- auto-crown (automatically picking up the crown in a room where it's dropped)
 - more later, hopefully, if i can think of smth to add
 
 ## Optional Steps
