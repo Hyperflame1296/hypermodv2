@@ -3460,17 +3460,18 @@ $(function() {
 
                 //construct string for creating list element
 
-                var liString = `<li id="msg-${msg.id}">`
+                var liString = msg.id ? `<li id="msg-${msg.id}">` : `<li>`
 
                 var isSpecialDm = false
 
-                if (msg.m === 'dm') {
-                    if (msg.sender._id === gClient.user._id || msg.recipient._id === gClient.user._id) {
+                if (msg.id)
+                    if (msg.m === 'dm') {
+                        if (msg.sender._id === gClient.user._id || msg.recipient._id === gClient.user._id) {
+                            liString += `<span class="reply"/>`
+                        }
+                    } else {
                         liString += `<span class="reply"/>`
                     }
-                } else {
-                    liString += `<span class="reply"/>`
-                }
 
                 if (gShowTimestampsInChat) liString += '<span class="timestamp"/>'
 
@@ -3501,7 +3502,8 @@ $(function() {
                 }
 
                 var li = $(liString)
-                li.find(`.reply`).text('➦')
+                if (msg.id)
+                    li.find(`.reply`).text('➦')
 
                 if (msg.r) {
                     var repliedMsg = messageCache.find((e) => e.id === msg.r)

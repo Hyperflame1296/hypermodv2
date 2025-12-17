@@ -86,6 +86,9 @@ export class HyperMod {
     messageLoop
     hasFileDialogOpen = false
     hasMenuOpen = false
+    canvasBoxHeight = 150
+    topOfPiano = null
+    ping = 0
     get tag_log() {
         if (this.lsSettings.showChatCommands ?? true)
             return `[HyperMod ${this.version}] - `
@@ -237,14 +240,14 @@ export class HyperMod {
             this.visibleNotes.push({
                 n: note,
                 c: participant?.color ?? '#777777',
-                t: t / 1000
+                t: performance.now() * 0.001
             })
         },
         noteOff(note, t = Date.now()) {
             let n = this.visibleNotes.findLast(n => n.n === note && n.l === undefined)
             if (!n)
                 return
-            n.l = t / 1000 - n.t
+            n.l = (performance.now() * 0.001) - n.t
         }
     }
     constructor() {
@@ -275,7 +278,7 @@ export class HyperMod {
                 return
             let note
             let ch = (e.channel ?? 0) % 16
-            if (!p) p ={ ...MPP.client.getOwnParticipant() }
+            if (!p) p = { ...MPP.client.getOwnParticipant() }
             p.color = this.channelColors[ch]
             switch (e.type) {
                 case 0x08:
@@ -303,6 +306,13 @@ export class HyperMod {
                     break
             }
         })
+        let lastMargin = $('div#piano')[0].style.marginTop
+        let observer = new MutationObserver((mutations) => {
+            let newMargin = $('div#piano')[0].style.marginTop
+            if (newMargin !== lastMargin)
+                this.topOfPiano = parseInt($('div#piano')[0].style.marginTop.replace('px', '')) - (this.canvasBoxHeight + 50)
+        })
+        observer.observe($('div#piano')[0], { attributes: true, attributeFilter: ['style', 'class'] });
         let loop = () => {
             this.canvasUpdate()
             requestAnimationFrame(loop)
@@ -387,6 +397,8 @@ export class HyperMod {
     canvasUpdate() {
         this.canvas.width = innerWidth
         this.canvas.height = innerHeight
+        //if (this.topOfPiano === null && performance.now() > 1000)
+        //    this.topOfPiano = parseInt($('div#piano')[0].style.marginTop) - (this.canvasBoxHeight + 50)
         let hyperModButton = $('div.ugly-button#hypermod-btn')
         let buttonHue = (performance.now() / 8) % 360
         if (!(this.lsSettings.removeRainbowGraphics ?? false))
@@ -416,9 +428,9 @@ export class HyperMod {
         this.now = performance.now();
         if (this.lsSettings.enableFpsGraph ?? true) {
             let w = 300
-            let h = 150
+            let h = this.canvasBoxHeight
             let sx = 100
-            let sy = parseInt($('div#piano')[0].style.marginTop) - (h + 50)
+            let sy = this.topOfPiano ?? 316
             for (let i = 0; i < this.fpsHist.length; i++) {
                 let f = this.fpsHist[i]
                 let h = (f / Math.max(...this.fpsHist)) * 150
@@ -430,18 +442,20 @@ export class HyperMod {
         }
         if (this.lsSettings.enableNoteVisualizer ?? false) {
             this.ctx.save()
+            let lastCol = null
             let w = 300
-            let h = 150
+            let h = this.canvasBoxHeight
             let sx = this.canvas.width - w - 100
-            let sy = parseInt($('div#piano')[0].style.marginTop) - (h + 50)
-            let t = Date.now() / 1000
+            let sy = this.topOfPiano ?? 316
+            let t = performance.now() * 0.001
             this.ctx.beginPath()
             this.ctx.rect(sx, sy, w, h)
             this.ctx.clip()
             for (let i = this.visualizer.visibleNotes.length - 1; i >= 0; i--) {
                 let note = this.visualizer.visibleNotes[i]
                 let x = sx + w - ((t - note.t) * this.lsSettings.noteVisualizerInterval)
-                let y = sy + (88 - note.n) * (h / 88)
+                let nh = h / 88
+                let y = sy + (88 - note.n) * nh
                 if (note.l === undefined && (t - note.t) > 3)
                     note.l = 3
                 let nw = (note.l ?? (t - note.t)) * this.lsSettings.noteVisualizerInterval
@@ -449,8 +463,11 @@ export class HyperMod {
                     this.visualizer.visibleNotes.splice(i, 1)
                     continue
                 }
-                this.ctx.fillStyle = note.c
-                this.ctx.fillRect(x, y, nw, h / 88)
+                if (note.c !== lastCol) {
+                    this.ctx.fillStyle = note.c
+                    lastCol = note.c
+                }
+                this.ctx.fillRect(x, y, nw, nh)
             }
             this.ctx.closePath()
             this.ctx.restore()
