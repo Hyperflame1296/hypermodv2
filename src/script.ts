@@ -3261,9 +3261,10 @@ $(function() {
                         if (gIsReplying) {
                             chat.cancelReply()
                         }
-                        setTimeout(function () {
-                            chat.blur()
-                        }, 100)
+                        if (gHyperMod.lsSettings.messageBlur ?? true)
+                            setTimeout(function () {
+                                chat.blur()
+                            }, 100)
                     } else {
                         if (
                             (
@@ -3299,9 +3300,10 @@ $(function() {
                         $(e.target).val('')
                         stopTyping()
                         updateTypingStatus()
-                        setTimeout(function () {
-                            chat.blur()
-                        }, 100)
+                        if (gHyperMod.lsSettings.messageBlur ?? true)
+                            setTimeout(function () {
+                                chat.blur()
+                            }, 100)
                     }
                     if (!gNoPreventDefault) e.preventDefault()
                     e.stopPropagation()

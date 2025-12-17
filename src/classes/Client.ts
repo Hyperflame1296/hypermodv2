@@ -342,6 +342,7 @@ export class Client extends EventEmitter {
     }
     offlineParticipant: ParticipantInfo = {
         _id: '000000000000000000000000',
+         id: '000000000000000000000000',
         name: 'You',
         color: '#777777'
     }

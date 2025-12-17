@@ -13,7 +13,7 @@ export class HyperMod {
     player = new Player
     npsTracker = new NPSTracker
     currentFile
-    version = 'v0.2.0.65'
+    version = 'v0.2.0.66'
     defaultSettings = {
         // MPP section
         forceInfNoteQuota: true,
@@ -24,6 +24,7 @@ export class HyperMod {
         connectUrl: 'wss://mppclone.com',
         autoCrown: true,
         showChatCommands: true,
+        messageBlur: true,
         // MIDI I/O section
         midiOutputVelocityThreshold: 0,
         // Player section
@@ -89,6 +90,7 @@ export class HyperMod {
     canvasBoxHeight = 150
     topOfPiano = null
     ping = 0
+    hsvHex = '#000000'
     get tag_log() {
         if (this.lsSettings.showChatCommands ?? true)
             return `[HyperMod ${this.version}] - `
@@ -329,41 +331,16 @@ export class HyperMod {
             }
         })
     }
-    hsvToRgb(h, s, v) {
-        let r, g, b, i, f, p, q, t;
-        if (arguments.length === 1) {
-            s = h.s, v = h.v, h = h.h;
-        }
-        i = Math.floor(h * 6);
-        f = h * 6 - i;
-        p = v * (1 - s);
-        q = v * (1 - f * s);
-        t = v * (1 - (1 - f) * s);
-        switch (i % 6) {
-            case 0: r = v, g = t, b = p; break;
-            case 1: r = q, g = v, b = p; break;
-            case 2: r = p, g = v, b = t; break;
-            case 3: r = p, g = q, b = v; break;
-            case 4: r = t, g = p, b = v; break;
-            case 5: r = v, g = p, b = q; break;
-        }
-        return {
-            r: Math.round(r * 255),
-            g: Math.round(g * 255),
-            b: Math.round(b * 255)
-        }
-    }
     sendMessage(msg) {
         if (!(this.lsSettings.showChatCommands ?? true)) {
             let hue = (performance.now() / 8) % 1
-            let color = this.hsvToRgb(hue, 1.0, 0.9)
             MPP.chat.receive({
                 m: 'a',
                 a: msg,
                 p: {
                     _id: '000000000000000000000000',
                      id: '000000000000000000000000',
-                    color: '#' + color.r.toString(16).padStart(2, '0') + color.g.toString(16).padStart(2, '0') + color.b.toString(16).padStart(2, '0'),
+                    color: this.hsvHex,
                     name: `HyperMod ${this.version}`
                 },
                 t: Date.now()
@@ -408,6 +385,7 @@ export class HyperMod {
         this.ctx.globalAlpha = this.lsSettings.canvasUiOpacity ?? 1.0
         this.ctx.font = '30px monospace'
         this.ctx.fillStyle = !(this.lsSettings.removeRainbowGraphics ?? false) ? `hsl(${buttonHue}, 100%, 90%)` : '#fff'
+        this.hsvHex = this.ctx.fillStyle
         this.ctx.lineWidth = 2
         this.ctx.strokeStyle = '#fff'
         if (!(this.lsSettings.removeHyperModText ?? false)) {
@@ -417,7 +395,7 @@ export class HyperMod {
             this.ctx.font = 'italic 20px monospace'
             this.ctx.fillText(`(${this.version})`, this.canvas.width / 2, 160)
             this.ctx.font = '30px monospace'
-            this.ctx.fillStyle = !(this.lsSettings.removeRainbowGraphics ?? false) ? `hsl(${buttonHue}, 100%, 90%)` : '#fff'
+            this.ctx.fillStyle = !(this.lsSettings.removeRainbowGraphics ?? false) ? this.hsvHex : '#fff'
         }
         this.ctx.font = '20px monospace'
         this.ctx.textAlign = 'right'
