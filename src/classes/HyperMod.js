@@ -13,7 +13,7 @@ export class HyperMod {
     player = new Player
     npsTracker = new NPSTracker
     currentFile
-    version = 'v0.2.0.70'
+    version = 'v0.2.0.71'
     defaultSettings = {
         // MPP section
         forceInfNoteQuota: true,
@@ -302,7 +302,7 @@ export class HyperMod {
                 MPP.client.channel && 
                 MPP.client.channel.crown &&
                 !MPP.client.channel.crown.participantId && 
-                Date.now() - MPP.client.channel.crown.time >= 14500
+                Date.now() - MPP.client.channel.crown.time >= 14800
             ) {
                 MPP.client.sendArray([{
                     m: 'chown',
