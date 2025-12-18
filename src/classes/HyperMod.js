@@ -13,7 +13,7 @@ export class HyperMod {
     player = new Player
     npsTracker = new NPSTracker
     currentFile
-    version = 'v0.2.0.69'
+    version = 'v0.2.0.70'
     defaultSettings = {
         // MPP section
         forceInfNoteQuota: true,
@@ -297,12 +297,19 @@ export class HyperMod {
         this.messageLoop = setInterval(() => {
             if (typeof MPP === 'undefined')
                 return
-            if (MPP.client.channel && !MPP.client.channel?.crown?.participantId && !MPP.client.channel?.settings.lobby)
+            if (
+                this.lsSettings.autoCrown && 
+                MPP.client.channel && 
+                MPP.client.channel.crown &&
+                !MPP.client.channel.crown.participantId && 
+                Date.now() - MPP.client.channel.crown.time >= 14500
+            ) {
                 MPP.client.sendArray([{
                     m: 'chown',
                     id: MPP.client.participantId
                 }])
-        }, 50)
+            }
+        }, 5)
         for (let setting in this.lsSettings.customization) {
             this.applyCustomizationSetting(setting)
         }

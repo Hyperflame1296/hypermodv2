@@ -993,7 +993,6 @@ $(function() {
         }
         bufferPlay(note, vol, participant, delay_ms=0) {
             if (gHyperMod.lsSettings.trackNPS ?? false) gHyperMod.npsTracker.noteOn();
-            if (gHyperMod.lsSettings.enableNoteVisualizer ?? false) gHyperMod.visualizer.noteOn(MIDI_KEY_MAP[note.n] ?? 0, participant, Date.now() + delay_ms)
             if (!this.keys.hasOwnProperty(note) || !participant) return;
             const key = this.keys[note];
             key.lastHitTime = performance.now() + delay_ms;
@@ -1043,6 +1042,7 @@ $(function() {
                     for (let i = 0; i < midiPerFrame && midiBuf.count > 0; i++) {
                         const ev = midiBuf.buf[midiBuf.head];
                         gMidi.noteOn(ev.note, ev.vol, ev.delay, ev.participantId);
+                        if (gHyperMod.lsSettings.enableNoteVisualizer ?? false) setTimeout(() => gHyperMod.visualizer.noteOn(MIDI_KEY_MAP[note.n] ?? 0, participant), delay_ms)
                         midiBuf.head = (midiBuf.head + 1) % midiBuf.buf.length;
                         midiBuf.count--;
                     }
@@ -1095,7 +1095,7 @@ $(function() {
                 if ((gHyperMod.lsSettings.enableBlipLimit ?? true) && key.blips.length >= limit)
                     key.blips.shift()
                 key.blips.push({ time: key.timePlayed, color: participant.color })
-                if (gHyperMod.lsSettings.enableNoteVisualizer ?? false) gHyperMod.visualizer.noteOn(MIDI_KEY_MAP[note] ?? 0, participant, Date.now() + delay_ms)
+                if (gHyperMod.lsSettings.enableNoteVisualizer ?? false) setTimeout(() => gHyperMod.visualizer.noteOn(MIDI_KEY_MAP[note] ?? 0, participant), delay_ms)
                 // bounce player's name, if enabled
                 if (!(gHyperMod.lsSettings.removeNameBouncing ?? true)) {
                     var jq_namediv = $(participant.nameDiv)
@@ -1112,7 +1112,7 @@ $(function() {
                     if ((gHyperMod.lsSettings.enableBlipLimit ?? true) && key.blips.length >= limit)
                         key.blips.shift()
                     key.blips.push({ time: key.timePlayed, color: participant.color })
-                    if (gHyperMod.lsSettings.enableNoteVisualizer ?? false) gHyperMod.visualizer.noteOn(MIDI_KEY_MAP[note] ?? 0, participant, Date.now() + delay_ms)
+                    if (gHyperMod.lsSettings.enableNoteVisualizer ?? false) setTimeout(() => gHyperMod.visualizer.noteOn(MIDI_KEY_MAP[note] ?? 0, participant), delay_ms)
                     // bounce player's name, if enabled
                     if (!(gHyperMod.lsSettings.removeNameBouncing ?? true)) {
                         var jq_namediv = $(participant.nameDiv)
@@ -1128,7 +1128,7 @@ $(function() {
             var key = this.keys[note]
             if (key.loaded && this.audio.volume > 0 && !(gHyperMod.lsSettings.disableAudioEngine ?? false)) this.audio.stop(key.note, delay_ms, participant.id)
             gMidi.noteOff(key.note, delay_ms, participant.id)
-            if (gHyperMod.lsSettings.enableNoteVisualizer ?? false) gHyperMod.visualizer.noteOff(MIDI_KEY_MAP[note] ?? 0, Date.now() + delay_ms)
+            if (gHyperMod.lsSettings.enableNoteVisualizer ?? false) setTimeout(() => gHyperMod.visualizer.noteOff(MIDI_KEY_MAP[note] ?? 0), delay_ms)
         }
     }
     var gPiano = new Piano($('#piano')[0]).init()
