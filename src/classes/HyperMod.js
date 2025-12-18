@@ -13,7 +13,7 @@ export class HyperMod {
     player = new Player
     npsTracker = new NPSTracker
     currentFile
-    version = 'v0.2.0.68'
+    version = 'v0.2.0.69'
     defaultSettings = {
         // MPP section
         forceInfNoteQuota: true,
@@ -391,8 +391,6 @@ export class HyperMod {
     receiveMessage(msg) {
         if (typeof MPP === 'undefined')
             return
-
-        console.log(msg)
         if (msg.p._id !== MPP.client.getOwnParticipant()._id) // use `getOwnParticipant` to allow for offline commands
             return
 
