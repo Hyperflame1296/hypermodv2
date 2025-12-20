@@ -200,8 +200,8 @@ $(function() {
                 this.limiterNode.threshold.value = -10
                 this.limiterNode.knee.value = 0
                 this.limiterNode.ratio.value = 20
-                this.limiterNode.attack.value = 0.002
-                this.limiterNode.release.value = 0.08553
+                this.limiterNode.attack.value = 0.0
+                this.limiterNode.release.value = 0.24822
                 this.limiterNode.connect(this.masterGain)
 
                 // for synth mix
@@ -244,7 +244,7 @@ $(function() {
             if (this.paused) return
             if (!this.context) return
             if (!(id in this.sounds)) return
-            if (this.volume <= 0 || (gHyperMod.lsSettings.disableAudioEngine ?? false)) return
+            if (vol <= 0 || this.volume <= 0 || (gHyperMod.lsSettings.disableAudioEngine ?? false)) return
             var source = this.context.createBufferSource();
             source.buffer = this.sounds[id];
             var gain = this.context.createGain();
@@ -269,15 +269,15 @@ $(function() {
         }
         play(id: string, vol: number, delay_ms: number, part_id: string) {
             if (!this.sounds.hasOwnProperty(id)) return
-            if (this.volume <= 0 || (gHyperMod.lsSettings.disableAudioEngine ?? false)) return
+            if (vol <= 0 || this.volume <= 0 || (gHyperMod.lsSettings.disableAudioEngine ?? false)) return
             if (!this.context) return
             var time = this.context.currentTime + delay_ms / 1000 //calculate time on note receive.
             var delay = delay_ms - this.threshold
-            if (delay <= 0) this.actualPlay(id, vol, time, part_id)
+            if (delay <= 0) this.actualPlay(id, vol * vol, time, part_id)
             else {
                 if ((gHyperMod.lsSettings.removeWorkerTimer ?? true) || !this.worker)
                     gScheduler.setTimeout(() => {
-                        this.actualPlay(id, vol, time, part_id)
+                        this.actualPlay(id, vol * vol, time, part_id)
                     }, delay)
                 else
                     this.worker.postMessage({
@@ -285,7 +285,7 @@ $(function() {
                         args: {
                             action: 0 /*play*/,
                             id: id,
-                            vol: vol,
+                            vol: vol * vol,
                             time: time,
                             part_id: part_id
                         }
@@ -3189,15 +3189,14 @@ $(function() {
                 if (!gTypingTimeout) {
                     startTyping()
                     updateTypingStatus()
+                    gTypingTimeout = gScheduler.setTimeout(() => {
+                        stopTyping()
+                        updateTypingStatus()
+                        gTypingTimeout = undefined
+                    }, 2000)
                 } else {
-                    gScheduler.clearTimeout(gTypingTimeout)
-                    gTypingTimeout = undefined
+                    gScheduler.rescheduleTimeout(gTypingTimeout, 2000)
                 }
-                gTypingTimeout = gScheduler.setTimeout(() => {
-                    stopTyping()
-                    updateTypingStatus()
-                    gTypingTimeout = undefined
-                }, 2000)
             })
             $('#chat-input').on('keydown', e => {
                 switch (e.code) {

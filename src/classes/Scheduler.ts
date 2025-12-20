@@ -6,6 +6,7 @@ export class Scheduler {
     initialized: boolean = false
     tasks: (() => void)[] = []
     timeouts: SchedulerTimeout[] = []
+    #timeoutId: number = 0
     init() {
         if (this.initialized)
             return console.warn('MPP.scheduler.init() called more than once!')
@@ -34,28 +35,43 @@ export class Scheduler {
     }
     post(cb: () => void) {
         if (!this.initialized)
-            return
+            return false
         this.tasks.push(cb)
+        return true
     }
     remove(cb: () => void) {
         if (!this.initialized)
-            return
+            return false
         this.tasks.splice(this.tasks.indexOf(cb), 1)
+        return true
     }
-    setTimeout(cb: () => void, delay: number) {
+    setTimeout(cb: () => void, delay: number = 0) {
         if (!this.initialized)
-            return
-        if (delay <= 0)
-            return cb()
+            return false
+        if (delay <= 0) {
+            cb()
+            return ++this.#timeoutId
+        }
         this.timeouts.push({
             cb,
-            time: performance.now() + delay
+            time: performance.now() + delay,
+            id: ++this.#timeoutId
         })
-        return this.timeouts.length
+        return this.#timeoutId
     }
-    clearTimeout(cb: () => void) {
+    rescheduleTimeout(id: number, delay: number = 0) {
         if (!this.initialized)
-            return
-        this.timeouts.splice(this.timeouts.findIndex(t => t.cb === cb), 1)
+            return false
+        let timeout = this.timeouts.find(t => t.id === id)
+        if (!timeout)
+            return false
+        timeout.time = performance.now() + Math.max(delay, 0)
+        return true
+    }
+    clearTimeout(id: number) {
+        if (!this.initialized)
+            return false
+        this.timeouts.splice(this.timeouts.findIndex(t => t.id === id), 1)
+        return true
     }
 }
