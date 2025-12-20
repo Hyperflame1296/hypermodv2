@@ -26,8 +26,8 @@
                     <label for='force-inf-notequota-switch'>Force infinite NoteQuota:</label>
                     <input class='hypermod hm-checkbox' type='checkbox' data-setting='forceInfNoteQuota' id='force-inf-notequota-switch'>
                 </div>
-                <div class='hypermod' id='disable-audio-engine-switch-c' title='Disables the garbage AudioEngineWeb that MPP uses.'>
-                    <label for='disable-audio-engine-switch'>Disable audio engine:</label>
+                <div class='hypermod' id='disable-audio-engine-switch-c' title='Disables all audio engines.'>
+                    <label for='disable-audio-engine-switch'>Don't use an audio engine:</label>
                     <input class='hypermod hm-checkbox' type='checkbox' data-setting='disableAudioEngine' id='disable-audio-engine-switch'>
                 </div>
                 <div class='hypermod' id='track-nps-switch-c' title='Tracks the global Notes per Second. (this setting greatly decreases performance!)'>
@@ -60,6 +60,16 @@
                     <div class='hypermod hm-button' id='reset-url-button'>Reset URL</div>
                 </div>
                 <div class='hypermod hm-button' id='reconnect-button'>Reconnect</div>
+                <div class='hypermod' id='hypermod-audio-engine-switch-c' title="Use HyperMod audio engine. Note that this engine doesn't support release, nor does it support the synth.">
+                    <label for='hypermod-audio-engine-switch'>Use HyperMod audio engine:</label>
+                    <input class='hypermod hm-checkbox' type='checkbox' data-setting='hyperModAudioEngine' id='hypermod-audio-engine-switch'>
+                </div>
+                <div class='hypermod indent'>
+                    <div class='hypermod' id='enable-release-switch-c' title="Use HyperMod audio engine. Note that this engine doesn't support the synth.">
+                        <label for='enable-release-switch'>Enable release:</label>
+                        <input class='hypermod hm-checkbox' type='checkbox' data-setting='enableRelease' id='enable-release-switch'>
+                    </div>
+                </div>
             </div>
             <div class='hypermod hm-section' id='midi-io-tab-content'>
                 <div class='hypermod' id='midi-output-velocity-threshold-c' title='The minimum velocity at which notes can be output.'>

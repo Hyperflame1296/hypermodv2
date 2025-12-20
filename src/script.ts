@@ -20,10 +20,12 @@ import { IncomingMessage } from './interfaces/IncomingMessage.js'
 import { ChannelSettings } from './interfaces/ChannelSettings.js'
 
 // import: local constants
-import { MIDI_KEY_MAP } from './constants.js'
+import { MIDI_KEY_MAP } from './modules/constants.js'
+import { MIDI_KEY_NAMES } from './modules/constants.js'
+import { DEFAULT_VELOCITY } from './modules/constants.js'
 
-// import: local methods
-import { parseMarkdown, parseContent, parseUrl } from './modules/util.js'
+// import: local constants
+import { util } from './modules/util.js'
 
 // code
 let translation = globalThis.i18nextify!.init({
@@ -59,12 +61,7 @@ $(function() {
         '%cCheck out the source code: https://github.com/mppnet/frontend/tree/main/client\nGuide for coders and bot developers: https://docs.google.com/document/d/1OrxwdLD1l1TE8iau6ToETVmnLuLXyGBhA0VfAY1Lf14/edit?usp=sharing',
         'color:gray; font-size:12px;'
     )
-    
-    var test_mode = globalThis.location.hash && globalThis.location.hash.match(/^(?:#.+)*#test(?:#.+)*$/i)
 
-    var gSeeOwnCursor = globalThis.location.hash && globalThis.location.hash.match(/^(?:#.+)*#seeowncursor(?:#.+)*$/i)
-
-    var gMidiVolumeTest = globalThis.location.hash && globalThis.location.hash.match(/^(?:#.+)*#midivolumetest(?:#.+)*$/i)
 
     if (!Array.prototype.indexOf) {
         Array.prototype.indexOf = function (elt /*, from*/) {
@@ -80,8 +77,6 @@ $(function() {
     }
     Notification.requestPermission()
 
-    var DEFAULT_VELOCITY = 0.5
-
     var TIMING_TARGET = 1000
 
     globalThis.requestAnimationFrame =
@@ -94,8 +89,55 @@ $(function() {
         globalThis.AudioContext || 
         undefined
 
+    // storage stuff
+    let storage = {
+        // url
+        gSeeOwnCursor: globalThis.location.hash && globalThis.location.hash.match(/^(?:#.+)*#seeowncursor(?:#.+)*$/i),
+        // localStorage
+        gPianoMutes: (localStorage.pianoMutes ? localStorage.pianoMutes : '').split(',').filter(v => v),
+        gChatMutes: (localStorage.chatMutes ? localStorage.chatMutes : '').split(',').filter(v => v),
+        gShowIdsInChat: localStorage.showIdsInChat == 'true',
+        gShowTimestampsInChat: localStorage.showTimestampsInChat == 'true',
+        gNoChatColors: localStorage.noChatColors == 'true',
+        gNoBackgroundColor: localStorage.noBackgroundColor == 'true',
+        gOutputOwnNotes: localStorage.outputOwnNotes ? localStorage.outputOwnNotes == 'true' : true,
+        gVirtualPianoLayout: localStorage.virtualPianoLayout == 'true',
+        gSmoothCursor: localStorage.smoothCursor == 'true',
+        gShowChatTooltips: localStorage.showChatTooltips == 'true',
+        gShowPianoNotes: localStorage.showPianoNotes == 'true',
+        gHighlightScaleNotes: localStorage.highlightScaleNotes,
+        gCursorHides: (localStorage.cursorHides ? localStorage.cursorHides : '').split(',').filter((v) => v),
+        gHideAllCursors: localStorage.hideAllCursors == 'true',
+        gHidePiano: localStorage.hidePiano == 'true',
+        gHideChat: localStorage.hideChat == 'true',
+        gNoPreventDefault: localStorage.noPreventDefault == 'true',
+        gHideBotUsers: localStorage.hideBotUsers == 'true',
+        gSnowflakes: new Date().getMonth() === 11 && localStorage.snowflakes !== 'false',
+    }
+
+    window.addEventListener('popstate', e => {
+        var depth = e.state ? e.state.depth : 0
+        //if (depth == gHistoryDepth) return; // <-- forgot why I did that though...
+        //yeah brandon idk why you did that either, but it's stopping the back button from changing rooms after 1 click so I commented it out
+
+        var direction = depth <= gHistoryDepth ? 'left' : 'right'
+        gHistoryDepth = depth
+
+        var name = getRoomNameFromURL()
+        changeRoom(name, direction, null, false)
+    })
+
     // Utility
     let gHyperMod = new HyperMod()
+    var gClient = new Client(gHyperMod.lsSettings.connectUrl ?? 'wss://mppclone.com')
+    if (loginInfo) {
+        gClient.setLoginInfo(loginInfo)
+    }
+    gClient.setChannel(channel_id)
+
+    gClient.on('disconnect', () => {
+        //console.log(evt);
+    })
 
     let BASIC_PIANO_SCALES = {
         // ty https://www.pianoscales.org/
@@ -127,9 +169,62 @@ $(function() {
         'Notes in G# / Ab Minor': ['A♭', 'B♭', 'B', 'D♭', 'E♭', 'E', 'G♭', 'A♭']
     }
 
-    // scheduler
-    let gScheduler = new Scheduler()
-    gScheduler.init()
+    // scheduler system
+    let scheduler = new Scheduler()
+
+    // keyboard system
+    let keyboard = new class Keyboard {
+        sustain = false
+        autoSustain = false
+        heldNotes = {}
+        sustainNotes = {}
+        press(id: string, vol: number) {
+            if (gClient.preventsPlaying() || gNoteQuota.points - 1 <= 0)
+                return
+            this.heldNotes[id] = true
+            if ((this.sustain || this.autoSustain) && !enableSynth)
+                this.sustainNotes[id] = true;
+            let part = gClient.getOwnParticipant()
+            if (gHyperMod.lsSettings.enableBufferedBlips ?? false)
+                gPiano.bufferPlay(id, vol !== undefined ? vol : DEFAULT_VELOCITY, part, 0)
+            else
+                gPiano.play(id, vol !== undefined ? vol : DEFAULT_VELOCITY, part, 0)
+            gClient.startNote(id, vol)
+            gNoteQuota.spend(1)
+        }
+        release(id: string) {
+            if (!this.heldNotes[id])
+                return
+            this.heldNotes[id] = false
+            if ((this.sustain || this.autoSustain) && !enableSynth)
+                return this.sustainNotes[id] = true
+            if (gNoteQuota.points - 1 <= 0)
+                return
+            gPiano.stop(id, gClient.getOwnParticipant(), 0)
+            gClient.stopNote(id)
+            gNoteQuota.spend(1)
+        }
+        sustainDown() {
+            if (this.autoSustain)
+                return
+            this.sustain = true
+        }
+        sustainUp() {
+            if (this.autoSustain)
+                return
+            this.sustain = false
+            for (let key in this.sustainNotes) {
+                if (!key || !this.sustainNotes[key])
+                    continue
+                if (gNoteQuota.points - 1 <= 0)
+                    continue
+                gPiano.stop(key, gClient.getOwnParticipant(), 0)
+                gClient.stopNote(key)
+                gNoteQuota.spend(1)
+            }
+            this.sustainNotes = {}
+        }
+    }
 
     // modal system
     let modal = {
@@ -141,7 +236,7 @@ $(function() {
             $('#modal #modals > *').hide()
             $('#modal').fadeIn(250)
             $(selector).show()
-            gScheduler.setTimeout(function () {
+            scheduler.setTimeout(function () {
                 $(selector).find(focus).trigger('focus')
             }, 100)
             this.current = selector
@@ -156,12 +251,811 @@ $(function() {
         handleEsc(evt) {
             if (evt.keyCode == 27) {
                 this.close()
-                if (!gNoPreventDefault) evt.preventDefault()
+                if (!storage.gNoPreventDefault) evt.preventDefault()
                 evt.stopPropagation()
             }
         }
     }
 
+    // background system
+    let background = {
+        initialized: false,
+        init() {
+            if (this.initialized)
+                return console.warn(`MPP.background.init() called more than once!`)
+            this.initialized = true
+            gClient.on('ch', ch => {
+                if (storage.gNoBackgroundColor) {
+                    this.reset()
+                    return
+                }
+                if (ch.ch.settings) {
+                    if (ch.ch.settings.color) {
+                        this.setColor(ch.ch.settings.color, ch.ch.settings.color2)
+                    } else {
+                        this.reset()
+                    }
+                }
+            })
+        },
+        setColor(hex: string, hex2?: string) {
+            if (!this.initialized)
+                return
+            var color1 = new Color(hex)
+            var color2 = new Color(hex2 || hex)
+            if (!hex2) color2.add(-0x40, -0x40, -0x40)
+
+            var bottom = document.getElementById('bottom')
+
+            document.body.style.setProperty('--color', color1.toHexa())
+            document.body.style.setProperty('--color2', color2.toHexa())
+
+            bottom.style.setProperty('--color', color1.toHexa())
+            bottom.style.setProperty('--color2', color2.toHexa())
+        },
+        reset() {
+            if (!this.initialized)
+                return
+            this.setColor('#220022', '#000022')
+        }
+    }
+
+    // tsparticle system
+    let tsparticles = {
+        initialized: false,
+        init() {
+            if (this.initialized)
+                return console.warn(`MPP.tsparticles.init() called more than once!`)
+            this.initialized = true
+            if (!storage.gSnowflakes) 
+                return
+            (async() => {
+                let snow = document.createElement('div')
+                snow.id = 'tsparticles'
+                $(document.body).prepend(snow)
+                await globalThis.loadSnowPreset(globalThis.tsParticles);
+                await globalThis.tsParticles.load({
+                    id: 'tsparticles',
+                    options: {
+                        preset: 'snow',
+                        particles: {
+                            size: {
+                                value: { min: 0, max: 3 }
+                            },
+                            number: {
+                                value: 250
+                            }
+                        },
+                        background: {
+                            color: 'transparent'
+                        }
+                    }
+                })
+                console.log('snow particles are working')
+            })();
+        }
+    }
+
+    // midi system
+    let midi = {
+        initialized: false,
+        access : null,
+        inputs : [],
+        outputs: [],
+        messageBuffer: [new Uint8Array(3), new Uint8Array(3)],
+        connectionsNotif: null,
+        init() {
+            if (this.initialized)
+                return console.warn('MPP.midi.init() called more than once!');
+            (async() => {
+                if (navigator.requestMIDIAccess) {
+                    let midiAccess = await navigator.requestMIDIAccess()
+                    let midiToggles = JSON.parse(localStorage['hm.midiToggles'] ?? '{"inputs":{},"outputs":{}}')
+                    midi.access  = midiAccess
+                    midi.inputs  = Array.from(midiAccess.inputs .values()).map(a => ({ enabled: midiToggles.inputs[a.name] ?? true, port: a }))
+                    midi.outputs = Array.from(midiAccess.outputs.values()).map(a => ({ enabled: midiToggles.outputs[a.name] ?? false, port: a }))
+                    for (let input of midi.inputs) {
+                        input.port.addEventListener('midimessage', e => {
+                            let status  = e.data[0]
+                            let opcode  = status >> 0x4
+                            let channel = status &  0xf
+                            switch (opcode) {
+                                case 0x09: // note event
+                                case 0x08:
+                                    let note = e.data[1]
+                                    let vel  = e.data[2]
+                                    if (opcode == 0x08 || vel == 0) // note off
+                                        keyboard.release(MIDI_KEY_NAMES[note - 9 + MIDI_TRANSPOSE + transpose + pitchBends[channel]])
+                                    else // note on
+                                        keyboard.press(MIDI_KEY_NAMES[note - 9 + MIDI_TRANSPOSE + transpose + pitchBends[channel]], vel / 127)
+                                    break
+                            }
+                        })
+                    }
+                    document.getElementById('midi-btn').addEventListener('click', function (evt) {
+                        if (!document.getElementById('Notification-MIDI-Connections')) midi.showConnections(true)
+                        else {
+                            midi.connectionsNotif.close()
+                        }
+                    })
+                    midi.showConnections(false)
+                }
+                this.initialized = true
+            })()
+        },
+        noteOn(note, vel, delay, part) {
+            if (!this.initialized)
+                return
+            if (this.outputs.length === 0)
+                return false
+            if (vel <= (gHyperMod.lsSettings.midiOutputVelocityThreshold ?? 0))
+                return false
+            let noteNum = MIDI_KEY_MAP[note]
+            if (noteNum === undefined) 
+                return false
+            noteNum = noteNum + 9 - MIDI_TRANSPOSE
+            scheduler.setTimeout(() => {
+                for (let output of this.outputs) {
+                    if (!output.enabled)
+                        continue
+                    let channel = participantChannel[part]
+                    let status  = (vel <= 0 ? 0x80 : 0x90) | (channel == 9 ? (channel + 1) & 0xf : channel)
+                    this.messageBuffer[0][0] = status
+                    this.messageBuffer[0][1] = noteNum
+                    this.messageBuffer[0][2] = vel
+                    output.port.send(this.messageBuffer[0])
+                }
+                return true
+            }, delay)
+        },
+        noteOff(note, delay, part) {
+            if (!this.initialized)
+                return
+            if (this.outputs.length === 0)
+                return false
+            let noteNum = MIDI_KEY_MAP[note]
+            if (noteNum === undefined) 
+                return false
+            noteNum = noteNum + 9 - MIDI_TRANSPOSE
+            scheduler.setTimeout(() => {
+                for (let output of this.outputs) {
+                    if (!output.enabled)
+                        continue
+                    let channel = participantChannel[part]
+                    let status  = 0x80 | (channel == 9 ? (channel + 1) & 0xf : channel)
+                    this.messageBuffer[1][0] = status
+                    this.messageBuffer[1][1] = noteNum
+                    this.messageBuffer[1][2] = 0
+                    output.port.send(this.messageBuffer[1])
+                }
+            }, delay)
+            return true
+        },
+        showConnections(sticky) {
+            if (!this.initialized)
+                return
+            //if(document.getElementById("Notification-MIDI-Connections"))
+            //sticky = 1; // todo: instead,
+            var inputs_ul = document.createElement('ul')
+            let midiToggles = JSON.parse(localStorage['hm.midiToggles'] ?? '{"inputs":{},"outputs":{}}')
+            if (this.inputs.length > 0) {
+                for (let input of this.inputs) {
+                    var li = document.createElement('li')
+                    li.classList.add('connection')
+                    if (input.enabled) {
+                        li.classList.add('enabled')
+                    }
+                    li.textContent = input.port.name
+                    $(li).on('click', e => {
+                        input.enabled = !input.enabled
+                        if (!midiToggles.inputs)
+                            midiToggles.inputs = {}
+                        midiToggles.inputs[input.port.name] = input.enabled
+                        localStorage['hm.midiToggles'] = JSON.stringify(midiToggles)
+                        e.target.classList.toggle('enabled')
+                    })
+                    $(inputs_ul).append(li)
+                }
+            } else {
+                inputs_ul.textContent = '(none)'
+            }
+            var outputs_ul = document.createElement('ul')
+            if (this.outputs.length > 0) {
+                for (let output of this.outputs) {
+                    var li = document.createElement('li')
+                    li.classList.add('connection')
+                    if (output.enabled) {
+                        li.classList.add('enabled')
+                    }
+                    li.textContent = output.port.name
+                    $(li).on('click', e => {
+                        output.enabled = !output.enabled
+                        if (!midiToggles.outputs)
+                            midiToggles.outputs = {}
+                        midiToggles.outputs[output.port.name] = output.enabled
+                        localStorage['hm.midiToggles'] = JSON.stringify(midiToggles)
+                        e.target.classList.toggle('enabled')
+                    })
+                    $(outputs_ul).append(li)
+                }
+            } else {
+                outputs_ul.textContent = '(none)'
+            }
+            outputs_ul.setAttribute('translated', '')
+            inputs_ul.setAttribute('translated', '')
+            let div = document.createElement('div')
+            let h1_inputs = document.createElement('h1')
+            let h1_outputs = document.createElement('h1')
+            h1_inputs.textContent = 'Inputs'
+            $(div).append(h1_inputs)
+            $(div).append(inputs_ul)
+            h1_outputs.textContent = 'Outputs'
+            $(div).append(h1_outputs)
+            $(div).append(outputs_ul)
+            this.connectionsNotif = new SiteNotification({
+                id: 'MIDI-Connections',
+                title: 'MIDI Connections',
+                duration: sticky ? '-1' : '4500',
+                html: div,
+                target: '#midi-btn'
+            })
+        }
+    };
+
+    // chat system
+    let chat = {
+        initialized: false,
+        inputHistoryIndex: 0,
+        messageCache: [],
+        inputHistory: [],
+        init() {
+            if (this.initialized)
+                return console.warn('MPP.chat.init() called more than once!')
+            this.initialized = true
+            gClient.on('ch', msg => {
+                if (msg.ch.settings.chat) {
+                    this.show()
+                } else {
+                    this.hide()
+                }
+            })
+            gClient.on('disconnect', msg => {})
+            gClient.on('c', msg => {
+                this.clear()
+                if (msg.c) {
+                    for (var i = 0; i < msg.c.length; i++) {
+                        this.receive(msg.c[i])
+                    }
+                }
+            })
+            gClient.on('a', msg => {
+                this.receive(msg)
+                gHyperMod.receiveMessage(msg)
+            })
+            gClient.on('dm', msg => {
+                this.receive(msg)
+            })
+
+            $('#chat-input').on('focus', () => {
+                releaseKeyboard()
+                $('#chat').addClass('chatting')
+                chat.scrollToBottom()
+            })
+            $(document).on('mousedown', e => {
+                if ($('#chat').has(e.target as unknown as HTMLElement).length <= 0) {
+                    chat.blur()
+                }
+            })
+            document.addEventListener('touchstart', e => {
+                for (var i in e.changedTouches) {
+                    var touch = e.changedTouches[i]
+                    if ($('#chat').has(touch.target as unknown as HTMLElement).length <= 0) {
+                        chat.blur()
+                    }
+                }
+            })
+            $(document).on('keydown', e => {
+                if ($('#chat').hasClass('chatting')) {
+                    if (e.code === 'Escape') {
+                        chat.blur()
+                        if (!storage.gNoPreventDefault) e.preventDefault()
+                        e.stopPropagation()
+                    } else if (e.code === 'Enter') {
+                        $('#chat-input').trigger('focus')
+                    }
+                } else if (!modal.current && (e.code == 'Escape' || e.code == 'Enter')) {
+                    $('#chat-input').trigger('focus')
+                }
+            })
+            $('#chat-input').on('input', e => {
+                if (!gClient.isConnected()) return
+                if (!(gHyperMod.lsSettings.showUsersWhenTyping ?? true)) return
+                if ((e.target as HTMLInputElement).value.length == 0) {
+                    stopTyping()
+                    if (gTypingTimeout) {
+                        scheduler.clearTimeout(gTypingTimeout)
+                        gTypingTimeout = undefined
+                    }
+                    return updateTypingStatus()
+                }
+                if (!gTypingTimeout) {
+                    startTyping()
+                    updateTypingStatus()
+                    gTypingTimeout = scheduler.setTimeout(() => {
+                        stopTyping()
+                        updateTypingStatus()
+                        gTypingTimeout = undefined
+                    }, 2000)
+                } else {
+                    scheduler.rescheduleTimeout(gTypingTimeout, 2000)
+                }
+            })
+            $('#chat-input').on('keydown', e => {
+                switch (e.code) {
+                    case 'ArrowUp': // up
+                        if (chat.inputHistoryIndex <= 0)
+                            return
+                        chat.inputHistoryIndex -= 1
+                        $(e.target).val(chat.inputHistory[chat.inputHistoryIndex] ?? '')
+                        if (!storage.gNoPreventDefault) e.preventDefault()
+                        e.stopPropagation()
+                        break
+                    case 'ArrowDown': // down
+                        if (chat.inputHistoryIndex >= chat.inputHistory.length)
+                            return
+                        chat.inputHistoryIndex += 1
+                        $(e.target).val(chat.inputHistory[chat.inputHistoryIndex] ?? '')
+                        if (!storage.gNoPreventDefault) e.preventDefault()
+                        e.stopPropagation()
+                        break
+                    case 'Enter':
+                        var message = $(e.target).val() as string
+                        if (message.length == 0) {
+                            if (gIsDming) {
+                                chat.endDM()
+                            }
+                            if (gIsReplying) {
+                                chat.cancelReply()
+                            }
+                            if (gHyperMod.lsSettings.messageBlur ?? true)
+                                scheduler.setTimeout(function () {
+                                    chat.blur()
+                                }, 100)
+                        } else {
+                            if (
+                                (
+                                    !(gHyperMod.lsSettings.showChatCommands ?? true) || 
+                                    !(gClient.isConnected() && gClient.channel)
+                                ) && 
+                                message.startsWith(gHyperMod.prefix) && 
+                                message !== gHyperMod.prefix
+                            ) {
+                                let msg: any = {
+                                    m: 'a',
+                                    a: message,
+                                    p: { ...gClient.getOwnParticipant() },
+                                    t: Date.now()
+                                }
+                                chat.receive(msg)
+                                gHyperMod.receiveMessage(msg)
+                            } else {
+                                if (gClient.isConnected() && gClient.channel)
+                                    chat.send(message)
+                                else {
+                                    let msg: any = {
+                                        m: 'a',
+                                        a: message,
+                                        p: { ...gClient.getOwnParticipant() },
+                                        t: Date.now()
+                                    }
+                                    chat.receive(msg)
+                                }
+                            }
+                            chat.inputHistory.push(message)
+                            chat.inputHistoryIndex = chat.inputHistory.length
+                            $(e.target).val('')
+                            stopTyping()
+                            updateTypingStatus()
+                            if (gHyperMod.lsSettings.messageBlur ?? true)
+                                scheduler.setTimeout(function () {
+                                    chat.blur()
+                                }, 100)
+                        }
+                        if (!storage.gNoPreventDefault) e.preventDefault()
+                        e.stopPropagation()
+                        break
+                    case 'Escape':
+                        chat.blur()
+                        if (!storage.gNoPreventDefault) e.preventDefault()
+                        e.stopPropagation()
+                        break
+                    case 'Tab':
+                        if (!storage.gNoPreventDefault) e.preventDefault()
+                        e.stopPropagation()
+                        break
+                }
+            })
+            var messageCache = [];
+        },
+        startDM: function (part) {
+            if (!this.initialized)
+                return
+            gIsDming = true
+            gDmParticipant = part;
+            ($('#chat-input')[0] as HTMLInputElement).placeholder = 'Direct messaging ' + part.name + '.'
+        },
+        endDM: function () {
+            if (!this.initialized)
+                return
+            gIsDming = false;
+            ($('#chat-input')[0] as HTMLInputElement).placeholder = globalThis.i18nextify.i18next.t('You can chat with this thing.')
+        },
+        startReply: function (part, id) {
+            if (!this.initialized)
+                return
+            $(`#msg-${gMessageId}`).css({
+                'background-color': 'unset',
+                border: '1px solid #00000000'
+            })
+            gIsReplying = true
+            gReplyParticipant = part
+            gMessageId = id;
+            ($('#chat-input')[0] as HTMLInputElement).placeholder = `Replying to ${part.name}`
+        },
+        startDmReply: function (part, id) {
+            if (!this.initialized)
+                return
+            $(`#msg-${gMessageId}`).css({
+                'background-color': 'unset',
+                border: '1px solid #00000000'
+            })
+            gIsReplying = true
+            gIsDming = true
+            gMessageId = id
+            gReplyParticipant = part
+            gDmParticipant = part;
+            ($('#chat-input')[0] as HTMLInputElement).placeholder = `Replying to ${part.name} in a DM.`
+        },
+        cancelReply: function () {
+            if (!this.initialized)
+                return
+            if (gIsDming) gIsDming = false
+            gIsReplying = false
+            $(`#msg-${gMessageId}`).css({
+                'background-color': 'unset',
+                border: '1px solid #00000000'
+            });
+            ($('#chat-input')[0] as HTMLInputElement).placeholder = globalThis.i18nextify.i18next.t(`You can chat with this thing.`)
+        },
+        show: function () {
+            if (!this.initialized)
+                return
+            $('#chat').fadeIn()
+        },
+        hide: function () {
+            if (!this.initialized)
+                return
+            $('#chat').fadeOut()
+        },
+        clear: function () {
+            if (!this.initialized)
+                return
+            $('#chat li').remove()
+        },
+        scrollToBottom: function () {
+            if (!this.initialized)
+                return
+            var ele = $('#chat ul').get(0)
+            ele.scrollTop = ele.scrollHeight - ele.clientHeight
+        },
+        blur: function () {
+            if (!this.initialized)
+                return
+            if ($('#chat').hasClass('chatting')) {
+                $('#chat-input').get(0).blur()
+                $('#chat').removeClass('chatting')
+                chat.scrollToBottom()
+                captureKeyboard()
+            }
+        },
+        send(message: string) {
+            if (!this.initialized)
+                return
+            if (gIsReplying) {
+                if (gIsDming) {
+                    gClient.sendArray([
+                        {
+                            m: 'dm',
+                            reply_to: gMessageId,
+                            _id: gReplyParticipant._id,
+                            message
+                        }
+                    ])
+                    scheduler.setTimeout(() => {
+                        chat.cancelReply()
+                    }, 100)
+                } else {
+                    gClient.sendArray([
+                        {
+                            m: 'a',
+                            reply_to: gMessageId,
+                            _id: gReplyParticipant._id,
+                            message
+                        }
+                    ])
+                    scheduler.setTimeout(() => {
+                        this.cancelReply()
+                    }, 100)
+                }
+            } else {
+                if (gIsDming) {
+                    gClient.sendArray([{ m: 'dm', _id: gDmParticipant._id, message }])
+                } else {
+                    gClient.sendArray([{ m: 'a', message }])
+                }
+            }
+        },
+        receive(msg: IncomingMessage['a'] | IncomingMessage['dm']) {
+            if (!this.initialized)
+                return
+            if (msg.m === 'dm') {
+                if (storage.gChatMutes.indexOf(msg.sender._id) != -1) return
+            } else {
+                if (storage.gChatMutes.indexOf(msg.p._id) != -1) return
+            }
+            //construct string for creating list element
+            var liString = msg.id ? `<li id="msg-${msg.id}">` : `<li>`
+            var isSpecialDm = false
+            if (msg.id)
+                if (msg.m === 'dm') {
+                    if (msg.sender._id === gClient.user._id || msg.recipient._id === gClient.user._id) {
+                        liString += `<span class="reply"/>`
+                    }
+                } else {
+                    liString += `<span class="reply"/>`
+                }
+            if (storage.gShowTimestampsInChat) liString += '<span class="timestamp"/>'
+            if (msg.m === 'dm') {
+                if (msg.sender._id === gClient.user._id) {
+                    //sent dm
+                    liString += '<span class="sentDm"/>'
+                } else if (msg.recipient._id === gClient.user._id) {
+                    //received dm
+                    liString += '<span class="receivedDm"/>'
+                } else {
+                    //someone else's dm
+                    liString += '<span class="otherDm"/>'
+                    isSpecialDm = true
+                }
+            }
+            if (isSpecialDm) {
+                if (storage.gShowIdsInChat) liString += '<span class="id"/>'
+                liString += '<span class="name"/><span class="dmArrow"/>'
+                if (storage.gShowIdsInChat) liString += '<span class="id2"/>'
+                liString += '<span class="name2"/><span class="message"/>'
+            } else {
+                if (storage.gShowIdsInChat) liString += '<span class="id"/>'
+                liString += '<span class="name"/>'
+                if (msg.r) liString += `<span class="replyLink"/>`
+                liString += '<span class="message"/>'
+            }
+            var li = $(liString)
+            if (msg.id)
+                li.find(`.reply`).text('➦')
+            if (msg.r) {
+                var repliedMsg = this.messageCache.find(e => e.id === msg.r)
+                if (!tabIsActive) {
+                    if (repliedMsg?.p?._id === gClient.user._id) {
+                        document.title = `You have received a reply!`
+                        if ((gHyperMod.lsSettings.sendNotifications ?? true) && Notification.permission === 'granted')
+                            new Notification(`You have received a reply!`, {
+                                body: `${msg.m === 'dm' ? msg.sender.name : msg.p.name} has replied to your message.`,
+                            })
+                        youreReplied = true
+                    }
+                }
+                if (repliedMsg) {
+                    li.find('.replyLink').text(`➥ ${repliedMsg.m === 'dm' ? repliedMsg.sender.name : repliedMsg.p.name}`)
+                    li.find('.replyLink').css({
+                        background: `${
+                            (repliedMsg?.m === 'dm' ? repliedMsg?.sender?.color : repliedMsg?.p?.color) ?? 'gray'
+                        }`
+                    })
+                    li.find('.replyLink').on('click', (evt) => {
+                        $('#chat-input').focus()
+                        document.getElementById(`msg-${repliedMsg?.id}`).scrollIntoView({ behavior: 'smooth' })
+                        $(`#msg-${repliedMsg?.id}`).css({
+                            border: `1px solid ${
+                                repliedMsg?.m === 'dm' ? repliedMsg.sender?.color : repliedMsg.p?.color
+                            }80`,
+                            'background-color': `${
+                                repliedMsg?.m === 'dm' ? repliedMsg.sender?.color : repliedMsg.p?.color
+                            }20`
+                        })
+                        scheduler.setTimeout(() => {
+                            $(`#msg-${repliedMsg?.id}`).css({
+                                'background-color': 'unset',
+                                border: '1px solid #00000000'
+                            })
+                        }, 5000)
+                    })
+                } else {
+                    li.find('.replyLink').text('➥ Unknown Message')
+                    li.find('.replyLink').css({ background: 'gray' })
+                }
+            }
+            //prefix before dms so people know it's a dm
+            if (msg.m === 'dm') {
+                if (msg.sender._id === gClient.user._id) {
+                    //sent dm
+                    li.find('.sentDm').text('To')
+                    li.find('.sentDm').css('color', '#ff55ff')
+                } else if (msg.recipient._id === gClient.user._id) {
+                    //received dm
+                    li.find('.receivedDm').text('From')
+                    li.find('.receivedDm').css('color', '#ff55ff')
+                } else {
+                    //someone else's dm
+                    li.find('.otherDm').text('DM')
+                    li.find('.otherDm').css('color', '#ff55ff')
+                    li.find('.dmArrow').text('->')
+                    li.find('.dmArrow').css('color', '#ff55ff')
+                }
+            }
+            if (storage.gShowTimestampsInChat) {
+                li.find('.timestamp').text(new Date(msg.t).toLocaleTimeString())
+            }
+            let message = util.html.parseMarkdown(util.html.parseContent(msg.a), util.html.parseUrl).replace(/@([\da-f]{24})/g, (match, id) => {
+                let user = gClient.ppl[id]
+                if (user) {
+                    let nick = util.html.parseContent(user.name)
+                    if (user.id === gClient.getOwnParticipant().id) {
+                        if (!tabIsActive) {
+                            youreMentioned = true
+                            document.title = globalThis.i18nextify.i18next.t('You were mentioned!')
+                            if ((gHyperMod.lsSettings.sendNotifications ?? true) && Notification.permission === 'granted')
+                                new Notification(globalThis.i18nextify.i18next.t('You were mentioned!'), {
+                                    body: `${msg.m === 'dm' ? msg.sender.name : msg.p.name} has mentioned you in chat.`,
+                                })
+                        }
+                        return `<span class="mention" style="background-color: ${user.color};">${nick}</span>`
+                    } else return `@${nick}`
+                } else return match
+            })
+            //apply names, colors, ids
+            li.find('.message').html(message)
+            if (msg.m === 'dm') {
+                if (!storage.gNoChatColors) li.find('.message').css('color', msg.sender.color || 'white')
+                if (storage.gShowIdsInChat) {
+                    if (msg.sender._id === gClient.user._id) {
+                        li.find('.id').text(msg.recipient._id.substring(0, 6))
+                    } else {
+                        li.find('.id').text(msg.sender._id.substring(0, 6))
+                    }
+                }
+                if (msg.sender._id === gClient.user._id) {
+                    //sent dm
+                    if (!storage.gNoChatColors) li.find('.name').css('color', msg.recipient.color || 'white')
+                    li.find('.name').text(msg.recipient.name + ':')
+                    if (storage.gShowChatTooltips) li[0].title = msg.recipient._id
+                } else if (msg.recipient._id === gClient.user._id) {
+                    //received dm
+                    if (!storage.gNoChatColors) li.find('.name').css('color', msg.sender.color || 'white')
+                    li.find('.name').text(msg.sender.name + ':')
+                    if (storage.gShowChatTooltips) li[0].title = msg.sender._id
+                } else {
+                    //someone else's dm
+                    if (!storage.gNoChatColors) li.find('.name').css('color', msg.sender.color || 'white')
+                    if (!storage.gNoChatColors) li.find('.name2').css('color', msg.recipient.color || 'white')
+                    li.find('.name').text(msg.sender.name)
+                    li.find('.name2').text(msg.recipient.name + ':')
+                    if (storage.gShowIdsInChat) li.find('.id').text(msg.sender._id.substring(0, 6))
+                    if (storage.gShowIdsInChat) li.find('.id2').text(msg.recipient._id.substring(0, 6))
+                    if (storage.gShowChatTooltips) li[0].title = msg.sender._id
+                }
+            } else {
+                if (!storage.gNoChatColors) li.find('.message').css('color', msg.p.color || 'white')
+                if (!storage.gNoChatColors) li.find('.name').css('color', msg.p.color || 'white')
+                li.find('.name').text(msg.p.name + ':')
+                if (!storage.gNoChatColors) li.find('.message').css('color', msg.p.color || 'white')
+                if (storage.gShowIdsInChat) li.find('.id').text(msg.p._id.substring(0, 6))
+                if (storage.gShowChatTooltips) li[0].title = msg.p._id
+            }
+            //Adds copying _ids on click in chat
+            li.find('.id').on('click', (evt) => {
+                if (msg.m === 'dm') {
+                    navigator.clipboard.writeText(msg.sender._id === gClient.user._id ? msg.recipient._id : msg.sender._id)
+                    li.find('.id').text('Copied')
+                    scheduler.setTimeout(() => {
+                        li.find('.id').text(
+                            (msg.sender._id === gClient.user._id ? msg.recipient._id : msg.sender._id).substring(0, 6)
+                        )
+                    }, 2500)
+                } else {
+                    navigator.clipboard.writeText(msg.p._id)
+                    li.find('.id').text('Copied')
+                    scheduler.setTimeout(() => {
+                        li.find('.id').text(msg.p._id.substring(0, 6))
+                    }, 2500)
+                }
+            })
+            li.find('.id2').on('click', () => {
+                if (msg.m !== 'dm')
+                    return
+                navigator.clipboard.writeText(msg.recipient._id)
+                li.find('.id2').text('Copied')
+                scheduler.setTimeout(() => {
+                    li.find('.id2').text(msg.recipient._id.substring(0, 6))
+                }, 2500)
+            })
+            //Reply button click event listener
+            li.find('.reply').on('click', () => {
+                if (msg.m !== 'dm') {
+                    chat.startReply(msg.p, msg.id)
+                    scheduler.setTimeout(() => {
+                        $(`#msg-${msg.id}`).css({
+                            border: `1px solid ${msg?.m === 'a' ? msg.p?.color : (msg as any).sender?.color}80`,
+                            'background-color': `${msg?.m === 'a' ? msg.p?.color : (msg as any).sender?.color}20`
+                        })
+                    }, 100)
+                    scheduler.setTimeout(() => {
+                        $('#chat-input').trigger('focus')
+                    }, 100)
+                } else {
+                    if (msg.m === 'dm') {
+                        let replyingTo = msg.sender._id === gClient.user._id ? msg.recipient : msg.sender
+                        if (gClient.ppl[replyingTo._id]) {
+                            chat.startDmReply(replyingTo, msg.id)
+                            scheduler.setTimeout(() => {
+                                $(`#msg-${msg.id}`).css({
+                                    border: `1px solid ${msg?.m === 'dm' ? msg.sender?.color : (msg as any).p?.color}80`,
+                                    'background-color': `${msg?.m === 'dm' ? msg.sender?.color : (msg as any).p?.color}20`
+                                })
+                            }, 100)
+                            scheduler.setTimeout(() => {
+                                $('#chat-input').trigger('focus')
+                            }, 100)
+                        } else {
+                            new SiteNotification({
+                                target: '#piano',
+                                title: 'User not found.',
+                                text: 'The user who you are trying to reply to in a DM is not found, so a DM could not be started.'
+                            })
+                        }
+                    }
+                }
+            })
+            //put list element in chat
+            $('#chat ul').append(li)
+            this.messageCache.push(msg)
+            var eles = $('#chat ul li').get()
+            for (var i = 1; i <= 50 && i <= eles.length; i++) {
+                eles[eles.length - i].style.opacity = (1.0 - i * 0.03).toFixed(2)
+            }
+            if (eles.length > 50) {
+                eles[0].style.display = 'none'
+            }
+            if (eles.length > 256) {
+                this.messageCache.shift()
+                $(eles[0]).remove()
+            }
+            // scroll to bottom if not "chatting" or if not scrolled up
+            if (!$('#chat').hasClass('chatting')) {
+                chat.scrollToBottom()
+            } else {
+                var ele = $('#chat ul').get(0)
+                if (ele.scrollTop > ele.scrollHeight - ele.offsetHeight - 50) chat.scrollToBottom()
+            }
+        }
+    }
+
+    // initialize everything
+    scheduler.init()
+    background.init()
+    tsparticles.init()
+    midi.init()
+    chat.init()
+    
     // AudioEngine classes
     class AudioEngineWeb extends AudioEngine {
         threshold: number
@@ -276,7 +1170,7 @@ $(function() {
             if (delay <= 0) this.actualPlay(id, vol * vol, time, part_id)
             else {
                 if ((gHyperMod.lsSettings.removeWorkerTimer ?? true) || !this.worker)
-                    gScheduler.setTimeout(() => {
+                    scheduler.setTimeout(() => {
                         this.actualPlay(id, vol * vol, time, part_id)
                     }, delay)
                 else
@@ -323,7 +1217,7 @@ $(function() {
             if (delay <= 0) this.actualStop(id, time, part_id)
             else {
                 if ((gHyperMod.lsSettings.removeWorkerTimer ?? true) || !this.worker)
-                    gScheduler.setTimeout(() => {
+                    scheduler.setTimeout(() => {
                         this.actualStop(id, time, part_id)
                     }, delay)
                 else
@@ -347,59 +1241,57 @@ $(function() {
             this.context.resume()
         }
     }
-    /*
-    class HMAudioEngine extends AudioEngine { // for future use
-        initialized = false
-        bufferLength = 0.125
-        voices = {}
-        lastTime = 0
+    class HMAudioEngine extends AudioEngine {
+        threshold: number
+        worker?: Worker
+        context: AudioContext
+        masterGain: GainNode
+        limiterNode: DynamicsCompressorNode
+        voices: Record<string, { source: AudioBufferSourceNode, gain: GainNode, started: boolean }> = {}
         constructor() {
             super()
         }
-        init(cb) {
-            if (this.initialized) return this
-            super.init()
-            this.context = new AudioContext()
-            this.initialized = true
-            this.lastTime = performance.now()
-            this.buffer = this.context.createBuffer(2, this.context.sampleRate * this.bufferLength, this.context.sampleRate)
-            this.source = this.context.createBufferSource()
-            this.source.buffer = this.buffer
-            this.source.connect(this.context.destination)
-            this.source.start()
+        init(cb?: () => any) {
+            super.init(this)
+            if (AudioContext) {
+                this.context = new AudioContext({ latencyHint: 'interactive' })
+
+                this.masterGain = this.context.createGain()
+                this.masterGain.connect(this.context.destination)
+                this.masterGain.gain.value = this.volume
+
+                this.limiterNode = this.context.createDynamicsCompressor()
+                this.limiterNode.threshold.value = -10
+                this.limiterNode.knee.value = 0
+                this.limiterNode.ratio.value = 20
+                this.limiterNode.attack.value = 0.0
+                this.limiterNode.release.value = 0.24822
+                this.limiterNode.connect(this.masterGain)
+            }
             if (cb) requestAnimationFrame(cb)
-            this.writeBuffer()
-            this.loop()
             return this
         }
-        loop() {
-            if (!this.initialized) return
-            if (performance.now() - this.lastTime > this.bufferLength * 1000) {
-                this.source.stop()
-                this.writeBuffer()
-                this.source = this.context.createBufferSource()
-                this.source.buffer = this.buffer
-                this.source.connect(this.context.destination)
-                this.source.start()
-                this.lastTime = performance.now()
-            }
-            requestAnimationFrame(::this.loop)
-        }
-        play() {
-            
-        }
-        writeBuffer() {
-            
-        }
-        load(id, url, cb) {
+        load(id: string, url: string | URL, cb: () => any) {
             try {
                 fetch(url).then(f => {
                     if (!f.ok) throw new Error('http error: ' + f.status)
                     f.arrayBuffer().then(data => {
-                        this.context.decodeAudioData(data).then(b => {
-                            this.sounds[id] = b
-                            cb?.()
-                        })
+                        if (this.context) {
+                            this.context.decodeAudioData(data).then(b => {
+                                this.sounds[id] = b
+                                let source = this.context.createBufferSource()
+                                source.buffer = b
+                                let gain = this.context.createGain()
+                                gain.connect(this.limiterNode)
+                                source.connect(gain)
+                                this.voices[id] = {
+                                    source,
+                                    gain,
+                                    started: false
+                                }
+                                cb?.()
+                            })
+                        }
                     })
                 })
             } catch (e) {
@@ -413,8 +1305,70 @@ $(function() {
                 })
             }
         }
+        play(id: string, vol: number, delay_ms: number, part_id: string) {
+            //the old play(), but with time insted of delay_ms.
+            if (this.paused) return
+            if (!this.context) return
+            if (!(id in this.sounds)) return
+            if (!(id in this.voices)) return
+            if (vol <= 0 || this.volume <= 0 || (gHyperMod.lsSettings.disableAudioEngine ?? false)) return
+            scheduler.setTimeout(() => {
+                let voice = this.voices[id]
+                if (!voice)
+                    return
+                if (voice.started)
+                    this.stop(id, delay_ms, part_id)
+
+                voice.gain.gain.value = vol * vol
+                voice.source.start(this.context.currentTime)
+                voice.started = true
+            }, delay_ms)
+        }
+        stop(id: string, delay_ms: number, part_id: string) {
+            if (this.paused) return
+            if (!this.context) return
+            if (!(id in this.sounds)) return
+            if (!(id in this.voices)) return
+            if (this.volume <= 0 || (gHyperMod.lsSettings.disableAudioEngine ?? false)) return
+            scheduler.setTimeout(() => {
+                let voice = this.voices[id]
+                if (!voice)
+                    return
+                if (voice.started) {
+                    if (gHyperMod.lsSettings.enableRelease) {
+                        voice.gain.gain.setValueAtTime(voice.gain.gain.value, this.context.currentTime);
+                        voice.gain.gain.linearRampToValueAtTime(0.0, this.context.currentTime + 0.2);
+                        voice.source.stop(this.context.currentTime + 0.20);
+                        voice.started = false
+
+                        let source = this.context.createBufferSource()
+                        source.buffer = voice.source.buffer
+                        let gain = this.context.createGain()
+                        gain.connect(this.limiterNode)
+                        source.connect(gain)
+                        voice.source = source
+                        voice.gain = gain
+                    } else {
+                        voice.source.stop()
+                        voice.started = false
+                        
+                        let source = this.context.createBufferSource()
+                        source.buffer = voice.source.buffer
+                        source.connect(voice.gain)
+                        voice.source = source
+                    }
+                }
+            }, delay_ms)
+        }
+        setVolume(x: number) {
+            super.setVolume(x)
+            this.masterGain.gain.value = this.volume
+        }
+        resume() {
+            this.paused = false
+            this.context.resume()
+        }
     }
-    */
 
     // Renderer classes
     class CanvasRenderer extends Renderer {
@@ -475,7 +1429,7 @@ $(function() {
             $(piano.rootElement).on('mousedown', e => {
                 mouse_down = true
                 //event.stopPropagation();
-                if (!gNoPreventDefault) e.preventDefault()
+                if (!storage.gNoPreventDefault) e.preventDefault()
 
                 var pos = CanvasRenderer.translateMouseEvent(e)
                 var hit = this.getHit(pos.x, pos.y)
@@ -489,7 +1443,7 @@ $(function() {
                 e => {
                     mouse_down = true
                     //event.stopPropagation();
-                    if (!gNoPreventDefault) e.preventDefault()
+                    if (!storage.gNoPreventDefault) e.preventDefault()
                     for (var i in e.changedTouches) {
                         var pos = CanvasRenderer.translateMouseEvent(e.changedTouches[i])
                         var hit = this.getHit(pos.x, pos.y)
@@ -703,7 +1657,7 @@ $(function() {
                     if (sharp) keyName += '#'
                     keyName += key.octave + 1
 
-                    if (gShowPianoNotes) {
+                    if (storage.gShowPianoNotes) {
                         this.ctx.font = `${(key.sharp ? this.blackKeyWidth : this.whiteKeyWidth) / 2}px Arial`
                         this.ctx.fillStyle = key.sharp ? 'white' : 'black'
                         this.ctx.textAlign = 'center'
@@ -730,7 +1684,7 @@ $(function() {
                         )
                     }
 
-                    let highlightScale = BASIC_PIANO_SCALES[gHighlightScaleNotes]
+                    let highlightScale = BASIC_PIANO_SCALES[storage.gHighlightScaleNotes]
                     if (highlightScale && key.loaded) {
                         keyName = keyName.replace('C#', 'D♭')
                         keyName = keyName.replace('D#', 'E♭')
@@ -913,7 +1867,11 @@ $(function() {
                     key.loaded = false
                     let useDomain = true
                     if (pack.url.match(/^(http|https):\/\//i)) useDomain = false
-                    this.piano.audio.load(key.note, pack.url + key.note + pack.ext, function () {
+                    this.piano.hmAudioEngine.load(key.note, pack.url + key.note + pack.ext, function () {
+                        key.loaded = true
+                        key.timeLoaded = Date.now()
+                    })
+                    this.piano.audioEngineWeb.load(key.note, pack.url + key.note + pack.ext, function () {
                         key.loaded = true
                         key.timeLoaded = Date.now()
                     })
@@ -966,11 +1924,18 @@ $(function() {
     class Piano {
         rootElement: any
         keys: {}
-        audio: AudioEngineWeb
+        audioEngineWeb: AudioEngineWeb
+        hmAudioEngine: HMAudioEngine
         renderer: CanvasRenderer
         _midiBuffer: any
         _blipBuffer: any
         _flusherRunning: any
+        get audio() {
+            if (gHyperMod.lsSettings.hyperModAudioEngine ?? false)
+                return this.hmAudioEngine
+            else
+                return this.audioEngineWeb
+        }
         constructor(rootElement: HTMLElement) {
             this.rootElement = rootElement
         }
@@ -993,21 +1958,19 @@ $(function() {
                     ++white_spatial
                 }
             }
-            if (test_mode) {
-                addKey('c', 2)
-            } else {
-                addKey('a', -1)
-                addKey('as', -1)
-                addKey('b', -1)
-                var notes = 'c cs d ds e f fs g gs a as b'.split(' ')
-                for (var oct = 0; oct < 7; oct++) {
-                    for (var i in notes) {
-                        addKey(notes[i], oct)
-                    }
+
+            addKey('a', -1)
+            addKey('as', -1)
+            addKey('b', -1)
+            var notes = 'c cs d ds e f fs g gs a as b'.split(' ')
+            for (var oct = 0; oct < 7; oct++) {
+                for (var i in notes) {
+                    addKey(notes[i], oct)
                 }
-                addKey('c', 7)
             }
-            this.audio = new AudioEngineWeb().init()
+            addKey('c', 7)
+            this.audioEngineWeb = new AudioEngineWeb().init()
+            this.hmAudioEngine = new HMAudioEngine().init()
             this.renderer = new CanvasRenderer().init(this)
             $(window).on('resize', () => {
                 this.renderer.resize()
@@ -1064,8 +2027,8 @@ $(function() {
                     // --- MIDI flush ---
                     for (let i = 0; i < midiPerFrame && midiBuf.count > 0; i++) {
                         const ev = midiBuf.buf[midiBuf.head];
-                        gMidi.noteOn(ev.note, ev.vol, ev.delay, ev.participantId);
-                        if (gHyperMod.lsSettings.enableNoteVisualizer ?? false) gScheduler.setTimeout(() => gHyperMod.visualizer.noteOn(MIDI_KEY_MAP[note] ?? 0, participant), delay_ms)
+                        midi.noteOn(ev.note, ev.vol, ev.delay, ev.participantId);
+                        if (gHyperMod.lsSettings.enableNoteVisualizer ?? false) scheduler.setTimeout(() => gHyperMod.visualizer.noteOn(MIDI_KEY_MAP[note] ?? 0, participant), delay_ms)
                         midiBuf.head = (midiBuf.head + 1) % midiBuf.buf.length;
                         midiBuf.count--;
                     }
@@ -1089,7 +2052,7 @@ $(function() {
                             const div = ev.participant.nameDiv;
                             div.__isBouncing = true;
                             div.classList.add("play");
-                            gScheduler.setTimeout(() => { div.classList.remove("play"); div.__isBouncing = false; }, 30);
+                            scheduler.setTimeout(() => { div.classList.remove("play"); div.__isBouncing = false; }, 30);
                         }
 
                         blipBuf.head = (blipBuf.head + 1) % blipBuf.buf.length;
@@ -1109,20 +2072,20 @@ $(function() {
             if (!this.keys.hasOwnProperty(note) || !participant) return
             var key = this.keys[note]
             if (key.loaded && this.audio.volume > 0 && !(gHyperMod.lsSettings.disableAudioEngine ?? false)) this.audio.play(key.note, vol, delay_ms, participant.id)
-            gMidi.noteOn(key.note, vol * 100, delay_ms, participant.id)
-            gScheduler.setTimeout(() => {
+            midi.noteOn(key.note, vol * 100, delay_ms, participant.id)
+            scheduler.setTimeout(() => {
                 // spawn a blip
                 let limit = gHyperMod.lsSettings.blipLimit ?? 8
                 key.timePlayed = Date.now()
                 if ((gHyperMod.lsSettings.enableBlipLimit ?? true) && key.blips.length >= limit)
                     key.blips.shift()
                 key.blips.push({ time: key.timePlayed, color: participant.color })
-                if (gHyperMod.lsSettings.enableNoteVisualizer ?? false) gScheduler.setTimeout(() => gHyperMod.visualizer.noteOn(MIDI_KEY_MAP[note] ?? 0, participant), delay_ms)
+                if (gHyperMod.lsSettings.enableNoteVisualizer ?? false) scheduler.setTimeout(() => gHyperMod.visualizer.noteOn(MIDI_KEY_MAP[note] ?? 0, participant), delay_ms)
                 // bounce player's name, if enabled
                 if (!(gHyperMod.lsSettings.removeNameBouncing ?? true)) {
                     var jq_namediv = $(participant.nameDiv)
                     jq_namediv.addClass('play')
-                    gScheduler.setTimeout(function () {
+                    scheduler.setTimeout(function () {
                         jq_namediv.removeClass('play')
                     }, 30)
                 }
@@ -1132,8 +2095,8 @@ $(function() {
             if (!this.keys.hasOwnProperty(note)) return
             var key = this.keys[note]
             if (key.loaded && this.audio.volume > 0 && !(gHyperMod.lsSettings.disableAudioEngine ?? false)) this.audio.stop(key.note, delay_ms, participant.id)
-            gMidi.noteOff(key.note, delay_ms, participant.id)
-            if (gHyperMod.lsSettings.enableNoteVisualizer ?? false) gScheduler.setTimeout(() => gHyperMod.visualizer.noteOff(MIDI_KEY_MAP[note] ?? 0), delay_ms)
+            midi.noteOff(key.note, delay_ms, participant.id)
+            if (gHyperMod.lsSettings.enableNoteVisualizer ?? false) scheduler.setTimeout(() => gHyperMod.visualizer.noteOff(MIDI_KEY_MAP[note] ?? 0), delay_ms)
         }
     }
     var gPiano = new Piano($('#piano')[0]).init()
@@ -1164,58 +2127,6 @@ $(function() {
     //gSoundSelector.addPacks(["/sounds/Emotional_2.0/", "/sounds/Harp/", "/sounds/Music_Box/", "/sounds/Vintage_Upright/", "/sounds/Steinway_Grand/", "/sounds/Emotional/", "/sounds/Untitled/"]);
     gSoundSelector.init()
 
-    let keyboard = new class Keyboard {
-        sustain = false
-        autoSustain = false
-        heldNotes = {}
-        sustainNotes = {}
-        press(id: string, vol: number) {
-            if (gClient.preventsPlaying() || gNoteQuota.points - 1 <= 0)
-                return
-            this.heldNotes[id] = true
-            if ((this.sustain || this.autoSustain) && !enableSynth)
-                this.sustainNotes[id] = true;
-            let part = gClient.getOwnParticipant()
-            if (gHyperMod.lsSettings.enableBufferedBlips ?? false)
-                gPiano.bufferPlay(id, vol !== undefined ? vol : DEFAULT_VELOCITY, part, 0)
-            else
-                gPiano.play(id, vol !== undefined ? vol : DEFAULT_VELOCITY, part, 0)
-            gClient.startNote(id, vol)
-            gNoteQuota.spend(1)
-        }
-        release(id: string) {
-            if (!this.heldNotes[id])
-                return
-            this.heldNotes[id] = false
-            if ((this.sustain || this.autoSustain) && !enableSynth)
-                return this.sustainNotes[id] = true
-            if (gNoteQuota.points - 1 <= 0)
-                return
-            gPiano.stop(id, gClient.getOwnParticipant(), 0)
-            gClient.stopNote(id)
-            gNoteQuota.spend(1)
-        }
-        sustainDown() {
-            if (this.autoSustain)
-                return
-            this.sustain = true
-        }
-        sustainUp() {
-            if (this.autoSustain)
-                return
-            this.sustain = false
-            for (let key in this.sustainNotes) {
-                if (!key || !this.sustainNotes[key])
-                    continue
-                if (gNoteQuota.points - 1 <= 0)
-                    continue
-                gPiano.stop(key, gClient.getOwnParticipant(), 0)
-                gClient.stopNote(key)
-                gNoteQuota.spend(1)
-            }
-            this.sustainNotes = {}
-        }
-    }
     function getParameterByName(name, url = globalThis.location.href) {
         name = name.replace(/[\[\]]/g, '\\$&')
         var regex = new RegExp('[?&]' + name + '(=([^&#]*)|&|#|$)'),
@@ -1270,16 +2181,6 @@ $(function() {
         history.pushState({ name: 'lobby' }, 'Piano > lobby', '/')
         channel_id = 'lobby'
     }
-
-    var gClient = new Client(gHyperMod.lsSettings.connectUrl ?? 'wss://mppclone.com')
-    if (loginInfo) {
-        gClient.setLoginInfo(loginInfo)
-    }
-    gClient.setChannel(channel_id)
-
-    gClient.on('disconnect', () => {
-        //console.log(evt);
-    })
 
     var tabIsActive = true
     var youreMentioned = false
@@ -1451,7 +2352,7 @@ $(function() {
             setupParticipantDivs(part)
 
             // add cursorDiv
-            if ((gClient.participantId !== part.id || gSeeOwnCursor) && !gCursorHides.includes(part.id) && !gHideAllCursors) {
+            if ((gClient.participantId !== part.id || storage.gSeeOwnCursor) && !storage.gCursorHides.includes(part.id) && !storage.gHideAllCursors) {
                 var div = document.createElement('div')
                 div.className = 'cursor'
                 div.style.display = 'none'
@@ -1528,12 +2429,12 @@ $(function() {
                 $(part.nameDiv).removeClass('owner')
                 $(part.cursorDiv).removeClass('owner')
             }
-            if (gPianoMutes.indexOf(part._id) !== -1) {
+            if (storage.gPianoMutes.indexOf(part._id) !== -1) {
                 $(part.nameDiv).addClass('muted-notes')
             } else {
                 $(part.nameDiv).removeClass('muted-notes')
             }
-            if (gChatMutes.indexOf(part._id) !== -1) {
+            if (storage.gChatMutes.indexOf(part._id) !== -1) {
                 $(part.nameDiv).addClass('muted-chat')
             } else {
                 $(part.nameDiv).removeClass('muted-chat')
@@ -1552,7 +2453,7 @@ $(function() {
             let part = gClient.ppl[msg.id]
             if (shouldHideUser(part)) return
             if (part && part.cursorDiv) {
-                if (gSmoothCursor) {
+                if (storage.gSmoothCursor) {
                     part.cursorDiv.style.transform = 'translate3d(' + msg.x + 'vw, ' + msg.y + 'vh, 0)'
                 } else {
                     part.cursorDiv.style.left = msg.x + '%'
@@ -1632,7 +2533,7 @@ $(function() {
     gClient.on('n', function (msg) {
         var t = msg.t - gClient.serverTimeOffset + TIMING_TARGET - Date.now()
         var participant: ParticipantInfo = gClient.findParticipantById(msg.p)
-        if (gPianoMutes.indexOf(participant._id) !== -1) return
+        if (storage.gPianoMutes.indexOf(participant._id) !== -1) return
         for (var i = 0; i < msg.n.length; i++) {
             var note = msg.n[i]
             var ms = t + (note.d || 0)
@@ -1667,7 +2568,7 @@ $(function() {
             last_mx = mx
             last_my = my
             gClient.sendArray([{ m: 'm', x: mx, y: my }])
-            if (gSeeOwnCursor) {
+            if (storage.gSeeOwnCursor) {
                 gClient.emit('m', {
                     m: 'm',
                     id: gClient.participantId,
@@ -1708,7 +2609,7 @@ $(function() {
             if (gClient.channel && (gClient.isOwner() || gClient.permissions.chsetAnywhere)) {
                 var settings = gClient.channel.settings
                 modal.open('#room-settings')
-                gScheduler.setTimeout(function () {
+                scheduler.setTimeout(function () {
                     $('#room-settings .checkbox[name=visible]').prop('checked', settings.visible)
                     $('#room-settings .checkbox[name=chat]').prop('checked', settings.chat)
                     $('#room-settings .checkbox[name=crownsolo]').prop('checked', settings.crownsolo)
@@ -1826,32 +2727,12 @@ $(function() {
         $('#room-notice').fadeOut(1000)
     })
 
-    var gPianoMutes = (localStorage.pianoMutes ? localStorage.pianoMutes : '').split(',').filter((v) => v)
-    var gChatMutes = (localStorage.chatMutes ? localStorage.chatMutes : '').split(',').filter((v) => v)
-    var gShowIdsInChat = localStorage.showIdsInChat == 'true'
-    var gShowTimestampsInChat = localStorage.showTimestampsInChat == 'true'
-    var gNoChatColors = localStorage.noChatColors == 'true'
-    var gNoBackgroundColor = localStorage.noBackgroundColor == 'true'
-    var gOutputOwnNotes = localStorage.outputOwnNotes ? localStorage.outputOwnNotes == 'true' : true
-    var gVirtualPianoLayout = localStorage.virtualPianoLayout == 'true'
-    var gSmoothCursor = localStorage.smoothCursor == 'true'
-    var gShowChatTooltips = localStorage.showChatTooltips == 'true'
-    var gShowPianoNotes = localStorage.showPianoNotes == 'true'
-    var gHighlightScaleNotes = localStorage.highlightScaleNotes
-    var gCursorHides = (localStorage.cursorHides ? localStorage.cursorHides : '').split(',').filter((v) => v)
-    var gHideAllCursors = localStorage.hideAllCursors == 'true'
-    var gHidePiano = localStorage.hidePiano == 'true'
-    var gHideChat = localStorage.hideChat == 'true'
-    var gNoPreventDefault = localStorage.noPreventDefault == 'true'
-    var gHideBotUsers = localStorage.hideBotUsers == 'true'
-    var gSnowflakes = new Date().getMonth() === 11 && localStorage.snowflakes !== 'false'
-
     //   var gWarnOnLinks = localStorage.warnOnLinks ? loalStorage.warnOnLinks == "true" : true;
     var gDisableMIDIDrumChannel = localStorage.disableMIDIDrumChannel ? localStorage.disableMIDIDrumChannel == 'true' : true
 
     function shouldShowSnowflakes() {
         let snowflakes = $('div#tsparticles')
-        if (gSnowflakes) {
+        if (storage.gSnowflakes) {
             snowflakes.show()
         } else {
             snowflakes.hide()
@@ -1864,7 +2745,7 @@ $(function() {
     // it may be replaced with the more performant code.
     // Returns true if we should hide the user, and returns false when we should not.
     function shouldHideUser(user) {
-        if (gHideBotUsers) {
+        if (storage.gHideBotUsers) {
             if (user) {
                 if (user.tag && user.tag.text === 'BOT') {
                     return true
@@ -1878,14 +2759,14 @@ $(function() {
     }
 
     // Hide piano attribute
-    if (gHidePiano) {
+    if (storage.gHidePiano) {
         $('#piano').hide()
     } else {
         $('#piano').show()
     }
 
     // Hide chat attribute
-    if (gHideChat) {
+    if (storage.gHideChat) {
         $('#chat').hide()
     } else {
         $('#chat').show()
@@ -1893,54 +2774,14 @@ $(function() {
 
     // smooth cursor attribute
 
-    if (gSmoothCursor) {
+    if (storage.gSmoothCursor) {
         $('#cursors').attr('smooth-cursors', '')
     } else {
         $('#cursors').removeAttr('smooth-cursors')
     }
-
-    // Background color
-    ;(function () {
-        var old_color1 = new Color('#000000')
-        var old_color2 = new Color('#000000')
-        function setColor(hex: string, hex2?: string) {
-            var color1 = new Color(hex)
-            var color2 = new Color(hex2 || hex)
-            if (!hex2) color2.add(-0x40, -0x40, -0x40)
-
-            var bottom = document.getElementById('bottom')
-
-            document.body.style.setProperty('--color', color1.toHexa())
-            document.body.style.setProperty('--color2', color2.toHexa())
-
-            bottom.style.setProperty('--color', color1.toHexa())
-            bottom.style.setProperty('--color2', color2.toHexa())
-        }
-
-        function setColorToDefault() {
-            setColor('#220022', '#000022')
-        }
-
-        globalThis.setBackgroundColor = setColor
-        globalThis.setBackgroundColorToDefault = setColorToDefault
-
-        setColorToDefault()
-
-        gClient.on('ch', function (ch) {
-            if (gNoBackgroundColor) {
-                setColorToDefault()
-                return
-            }
-            if (ch.ch.settings) {
-                if (ch.ch.settings.color) {
-                    setColor(ch.ch.settings.color, ch.ch.settings.color2)
-                } else {
-                    setColorToDefault()
-                }
-            }
-        })
-    })()
-
+    globalThis.setBackgroundColor = background.setColor.bind(background)
+    globalThis.setBackgroundColorToDefault = background.reset.bind(background)
+    background.reset()
     var volume_slider = document.getElementById('volume-slider') as HTMLInputElement
     volume_slider.value = gPiano.audio.volume.toString()
     $('#volume-label').text('Volume: ' + Math.floor(gPiano.audio.volume * 100) + '%')
@@ -2047,7 +2888,7 @@ $(function() {
         }
     }
 
-    var key_binding = gVirtualPianoLayout ? layouts.VP : layouts.MPP
+    var key_binding = storage.gVirtualPianoLayout ? layouts.VP : layouts.MPP
 
     var capsLockKey = false
 
@@ -2065,14 +2906,14 @@ $(function() {
 
                 var note = binding.note
                 var octave = 1 + note.octave
-                if (!gVirtualPianoLayout) {
+                if (!storage.gVirtualPianoLayout) {
                     if (evt.shiftKey) ++octave
                     else if (capsLockKey || evt.ctrlKey) --octave
                     else if (evt.altKey) octave += 2
                 }
                 note = note.note + octave
                 var index = keys.indexOf(note)
-                if (gVirtualPianoLayout && evt.shiftKey) {
+                if (storage.gVirtualPianoLayout && evt.shiftKey) {
                     note = keys[index + transpose + 1]
                 } else note = keys[index + transpose]
                 if (note === undefined) return
@@ -2082,22 +2923,22 @@ $(function() {
 
             if (++gKeyboardSeq == 3) {
                 gKnowsYouCanUseKeyboard = true
-                if (globalThis.gKnowsYouCanUseKeyboardTimeout) gScheduler.clearTimeout(globalThis.gKnowsYouCanUseKeyboardTimeout)
+                if (globalThis.gKnowsYouCanUseKeyboardTimeout) scheduler.clearTimeout(globalThis.gKnowsYouCanUseKeyboardTimeout)
                 if (localStorage) localStorage.knowsYouCanUseKeyboard = true
                 if (globalThis.gKnowsYouCanUseKeyboardNotification) globalThis.gKnowsYouCanUseKeyboardNotification.close()
             }
 
-            if (!gNoPreventDefault) evt.preventDefault()
+            if (!storage.gNoPreventDefault) evt.preventDefault()
             evt.stopPropagation()
             return false
         } else if (code == 0x14) {
             // Caps Lock
             capsLockKey = true
-            if (!gNoPreventDefault) evt.preventDefault()
+            if (!storage.gNoPreventDefault) evt.preventDefault()
         } else if (code == 0x20) {
             // Space Bar
             keyboard.sustainDown()
-            if (!gNoPreventDefault) evt.preventDefault()
+            if (!storage.gNoPreventDefault) evt.preventDefault()
         } else if (code === 38 && transpose <= 100) {
             transpose += 12
             sendTransposeNotif()
@@ -2112,13 +2953,13 @@ $(function() {
             sendTransposeNotif()
         } else if (code == 9) {
             // Tab (don't tab away from the piano)
-            if (!gNoPreventDefault) evt.preventDefault()
+            if (!storage.gNoPreventDefault) evt.preventDefault()
         } else if (code == 8) {
             // Backspace (don't navigate Back)
             keyboard.autoSustain = !keyboard.autoSustain
             if (!keyboard.autoSustain)
                 keyboard.sustainUp()
-            if (!gNoPreventDefault) evt.preventDefault()
+            if (!storage.gNoPreventDefault) evt.preventDefault()
         }
     }
 
@@ -2142,37 +2983,37 @@ $(function() {
 
                 var note = binding.note
                 var octave = 1 + note.octave
-                if (!gVirtualPianoLayout) {
+                if (!storage.gVirtualPianoLayout) {
                     if (evt.shiftKey) ++octave
                     else if (capsLockKey || evt.ctrlKey) --octave
                     else if (evt.altKey) octave += 2
                 }
                 note = note.note + octave
                 var index = keys.indexOf(note)
-                if (gVirtualPianoLayout && evt.shiftKey) {
+                if (storage.gVirtualPianoLayout && evt.shiftKey) {
                     note = keys[index + transpose + 1]
                 } else note = keys[index + transpose]
                 if (note === undefined) return
                 keyboard.release(note)
             }
 
-            if (!gNoPreventDefault) evt.preventDefault()
+            if (!storage.gNoPreventDefault) evt.preventDefault()
             evt.stopPropagation()
             return false
         } else if (code == 20) {
             // Caps Lock
             capsLockKey = false
-            if (!gNoPreventDefault) evt.preventDefault()
+            if (!storage.gNoPreventDefault) evt.preventDefault()
         } else if (code === 0x20) {
             // Space Bar
             keyboard.sustainUp()
-            if (!gNoPreventDefault) evt.preventDefault()
+            if (!storage.gNoPreventDefault) evt.preventDefault()
         }
     }
 
     function handleKeyPress(evt) {
         if (evt.target.type) return
-        if (!gNoPreventDefault) evt.preventDefault()
+        if (!storage.gNoPreventDefault) evt.preventDefault()
         evt.stopPropagation()
         if (evt.keyCode == 27 || evt.keyCode == 13) {
             //$("#chat input").focus();
@@ -2219,7 +3060,7 @@ $(function() {
         var last_rat = 0
         var nqjq = $('#quota .value')
         let nq = new NoteQuota()
-        gScheduler.post(() => {
+        scheduler.post(() => {
             // update UI
             var rat = (nq.points / nq.max) * 100
             nqjq.css('width', rat.toFixed(0) + '%')
@@ -2280,7 +3121,7 @@ $(function() {
                 var id = target.participantId
                 if (id == gClient.participantId) {
                     modal.open('#rename', 'input[name=name]')
-                    gScheduler.setTimeout(function () {
+                    scheduler.setTimeout(function () {
                         $('#rename input[name=name]').val(gClient.ppl[gClient.participantId].name)
                         $('#rename input[name=color]').val(gClient.ppl[gClient.participantId].color)
                     }, 100)
@@ -2341,17 +3182,17 @@ $(function() {
                 .on('mousedown touchstart', (evt) => {
                     navigator.clipboard.writeText(part._id)
                     evt.target.innerText = 'Copied!'
-                    gScheduler.setTimeout(() => {
+                    scheduler.setTimeout(() => {
                         evt.target.innerText = part._id
                     }, 2500)
                 })
             // add menu items
-            if (gPianoMutes.indexOf(part._id) == -1) {
+            if (storage.gPianoMutes.indexOf(part._id) == -1) {
                 $(`<div class="menu-item">${globalThis.i18nextify.i18next.t('Mute Notes')}</div>`)
                     .appendTo(menu)
                     .on('mousedown touchstart', function (evt) {
-                        gPianoMutes.push(part._id)
-                        if (localStorage) localStorage.pianoMutes = gPianoMutes.join(',')
+                        storage.gPianoMutes.push(part._id)
+                        if (localStorage) localStorage.pianoMutes = storage.gPianoMutes.join(',')
                         $(part.nameDiv).addClass('muted-notes')
                     })
             } else {
@@ -2359,17 +3200,17 @@ $(function() {
                     .appendTo(menu)
                     .on('mousedown touchstart', function (evt) {
                         var i
-                        while ((i = gPianoMutes.indexOf(part._id)) != -1) gPianoMutes.splice(i, 1)
-                        if (localStorage) localStorage.pianoMutes = gPianoMutes.join(',')
+                        while ((i = storage.gPianoMutes.indexOf(part._id)) != -1) storage.gPianoMutes.splice(i, 1)
+                        if (localStorage) localStorage.pianoMutes = storage.gPianoMutes.join(',')
                         $(part.nameDiv).removeClass('muted-notes')
                     })
             }
-            if (gChatMutes.indexOf(part._id) == -1) {
+            if (storage.gChatMutes.indexOf(part._id) == -1) {
                 $(`<div class="menu-item">${globalThis.i18nextify.i18next.t('Mute Chat')}</div>`)
                     .appendTo(menu)
                     .on('mousedown touchstart', function (evt) {
-                        gChatMutes.push(part._id)
-                        if (localStorage) localStorage.chatMutes = gChatMutes.join(',')
+                        storage.gChatMutes.push(part._id)
+                        if (localStorage) localStorage.chatMutes = storage.gChatMutes.join(',')
                         $(part.nameDiv).addClass('muted-chat')
                     })
             } else {
@@ -2377,32 +3218,32 @@ $(function() {
                     .appendTo(menu)
                     .on('mousedown touchstart', function (evt) {
                         var i
-                        while ((i = gChatMutes.indexOf(part._id)) != -1) gChatMutes.splice(i, 1)
-                        if (localStorage) localStorage.chatMutes = gChatMutes.join(',')
+                        while ((i = storage.gChatMutes.indexOf(part._id)) != -1) storage.gChatMutes.splice(i, 1)
+                        if (localStorage) localStorage.chatMutes = storage.gChatMutes.join(',')
                         $(part.nameDiv).removeClass('muted-chat')
                     })
             }
-            if (!(gPianoMutes.indexOf(part._id) >= 0) || !(gChatMutes.indexOf(part._id) >= 0)) {
+            if (!(storage.gPianoMutes.indexOf(part._id) >= 0) || !(storage.gChatMutes.indexOf(part._id) >= 0)) {
                 $(`<div class="menu-item">${globalThis.i18nextify.i18next.t('Mute Completely')}</div>`)
                     .appendTo(menu)
                     .on('mousedown touchstart', function (evt) {
-                        gPianoMutes.push(part._id)
-                        if (localStorage) localStorage.pianoMutes = gPianoMutes.join(',')
-                        gChatMutes.push(part._id)
-                        if (localStorage) localStorage.chatMutes = gChatMutes.join(',')
+                        storage.gPianoMutes.push(part._id)
+                        if (localStorage) localStorage.pianoMutes = storage.gPianoMutes.join(',')
+                        storage.gChatMutes.push(part._id)
+                        if (localStorage) localStorage.chatMutes = storage.gChatMutes.join(',')
                         $(part.nameDiv).addClass('muted-notes')
                         $(part.nameDiv).addClass('muted-chat')
                     })
             }
-            if (gPianoMutes.indexOf(part._id) >= 0 || gChatMutes.indexOf(part._id) >= 0) {
+            if (storage.gPianoMutes.indexOf(part._id) >= 0 || storage.gChatMutes.indexOf(part._id) >= 0) {
                 $(`<div class="menu-item">${globalThis.i18nextify.i18next.t('Unmute Completely')}</div>`)
                     .appendTo(menu)
                     .on('mousedown touchstart', function (evt) {
                         var i
-                        while ((i = gPianoMutes.indexOf(part._id)) != -1) gPianoMutes.splice(i, 1)
-                        while ((i = gChatMutes.indexOf(part._id)) != -1) gChatMutes.splice(i, 1)
-                        if (localStorage) localStorage.pianoMutes = gPianoMutes.join(',')
-                        if (localStorage) localStorage.chatMutes = gChatMutes.join(',')
+                        while ((i = storage.gPianoMutes.indexOf(part._id)) != -1) storage.gPianoMutes.splice(i, 1)
+                        while ((i = storage.gChatMutes.indexOf(part._id)) != -1) storage.gChatMutes.splice(i, 1)
+                        if (localStorage) localStorage.pianoMutes = storage.gPianoMutes.join(',')
+                        if (localStorage) localStorage.chatMutes = storage.gChatMutes.join(',')
                         $(part.nameDiv).removeClass('muted-notes')
                         $(part.nameDiv).removeClass('muted-chat')
                     })
@@ -2432,12 +3273,12 @@ $(function() {
                         chat.startDM(part)
                     })
             }
-            if (gCursorHides.indexOf(part._id) == -1) {
+            if (storage.gCursorHides.indexOf(part._id) == -1) {
                 $(`<div class="menu-item">${globalThis.i18nextify.i18next.t('Hide Cursor')}</div>`)
                     .appendTo(menu)
                     .on('mousedown touchstart', function (evt) {
-                        gCursorHides.push(part._id)
-                        if (localStorage) localStorage.cursorHides = gCursorHides.join(',')
+                        storage.gCursorHides.push(part._id)
+                        if (localStorage) localStorage.cursorHides = storage.gCursorHides.join(',')
                         $(part.cursorDiv).hide()
                     })
             } else {
@@ -2445,8 +3286,8 @@ $(function() {
                     .appendTo(menu)
                     .on('mousedown touchstart', function (evt) {
                         var i
-                        while ((i = gCursorHides.indexOf(part._id)) != -1) gCursorHides.splice(i, 1)
-                        if (localStorage) localStorage.cursorHides = gCursorHides.join(',')
+                        while ((i = storage.gCursorHides.indexOf(part._id)) != -1) storage.gCursorHides.splice(i, 1)
+                        if (localStorage) localStorage.cursorHides = storage.gCursorHides.join(',')
                         $(part.cursorDiv).show()
                     })
             }
@@ -2455,7 +3296,7 @@ $(function() {
                 .appendTo(menu)
                 .on('mousedown touchstart', function (evt) {
                     ($('#chat-input')[0] as HTMLInputElement).value += '@' + part.id + ' '
-                    gScheduler.setTimeout(() => {
+                    scheduler.setTimeout(() => {
                         $('#chat-input').trigger('focus')
                     }, 1)
                 })
@@ -2484,7 +3325,7 @@ $(function() {
                     .appendTo(menu)
                     .on('mousedown touchstart', function (evt) {
                         modal.open('#siteban')
-                        gScheduler.setTimeout(function () {
+                        scheduler.setTimeout(function () {
                             $('#siteban input[name=id]').val(part._id)
                             $('#siteban input[name=reasonText]').val('Discrimination against others')
                             $('#siteban input[name=reasonText]').attr('disabled', 'true')
@@ -2582,7 +3423,7 @@ $(function() {
             })
 
             if (this.duration > 0) {
-                gScheduler.setTimeout(() => {
+                scheduler.setTimeout(() => {
                     self.close()
                 }, this.duration)
             }
@@ -2618,7 +3459,7 @@ $(function() {
     var gKnowsYouCanUseKeyboard = false
     if (localStorage && localStorage.knowsYouCanUseKeyboard) gKnowsYouCanUseKeyboard = true
     if (!gKnowsYouCanUseKeyboard) {
-        globalThis.gKnowsYouCanUseKeyboardTimeout = gScheduler.setTimeout(function () {
+        globalThis.gKnowsYouCanUseKeyboardTimeout = scheduler.setTimeout(function () {
             globalThis.gKnowsYouCanUseKeyboardNotification = new SiteNotification({
                 title: globalThis.i18nextify.i18next.t('Did you know!?!'),
                 text: globalThis.i18nextify.i18next.t('You can play the piano with your keyboard, too.  Try it!'),
@@ -2738,7 +3579,7 @@ $(function() {
         evt.stopPropagation()
         var room_name = 'Room' + Math.floor(Math.random() * 1000000000000)
         changeRoom(room_name, 'right', { visible: false })
-        gScheduler.setTimeout(function () {
+        scheduler.setTimeout(function () {
             new SiteNotification({
                 id: 'share',
                 title: globalThis.i18nextify.i18next.t('Playing alone'),
@@ -2785,7 +3626,7 @@ $(function() {
             $('#new-room .text[name=name]').val('')
             modal.close()
             changeRoom(name, 'right', settings)
-            gScheduler.setTimeout(function () {
+            scheduler.setTimeout(function () {
                 new SiteNotification({
                     id: 'share',
                     title: globalThis.i18nextify.i18next.t('Created a Room'),
@@ -2811,7 +3652,7 @@ $(function() {
             } else {
                 return
             }
-            if (!gNoPreventDefault) e.preventDefault()
+            if (!storage.gNoPreventDefault) e.preventDefault()
             e.stopPropagation()
             return false
         })
@@ -2846,7 +3687,7 @@ $(function() {
         $('#piano')
             .addClass('ease-out')
             .addClass('slide-' + opposite)
-        gScheduler.setTimeout(
+        scheduler.setTimeout(
             function () {
                 $('#piano')
                     .removeClass('ease-out')
@@ -2855,7 +3696,7 @@ $(function() {
             },
             (t += d)
         )
-        gScheduler.setTimeout(
+        scheduler.setTimeout(
             function () {
                 $('#piano')
                     .addClass('ease-in')
@@ -2863,7 +3704,7 @@ $(function() {
             },
             (t += d)
         )
-        gScheduler.setTimeout(
+        scheduler.setTimeout(
             function () {
                 $('#piano').removeClass('ease-in')
             },
@@ -2872,17 +3713,6 @@ $(function() {
     }
 
     var gHistoryDepth = 0
-    $(window).on('popstate', function (evt) {
-        var depth = (evt as any).state ? (evt as any).state.depth : 0
-        //if (depth == gHistoryDepth) return; // <-- forgot why I did that though...
-        //yeah brandon idk why you did that either, but it's stopping the back button from changing rooms after 1 click so I commented it out
-
-        var direction = depth <= gHistoryDepth ? 'left' : 'right'
-        gHistoryDepth = depth
-
-        var name = getRoomNameFromURL()
-        changeRoom(name, direction, null, false)
-    })
 
     // Rename
 
@@ -2908,7 +3738,7 @@ $(function() {
             } else {
                 return
             }
-            if (!gNoPreventDefault) evt.preventDefault()
+            if (!storage.gNoPreventDefault) evt.preventDefault()
             evt.stopPropagation()
             return false
         })
@@ -3019,7 +3849,7 @@ $(function() {
             } else {
                 return
             }
-            if (!gNoPreventDefault) evt.preventDefault()
+            if (!storage.gNoPreventDefault) evt.preventDefault()
             evt.stopPropagation()
             return false
         }
@@ -3111,565 +3941,11 @@ $(function() {
             }
         }
     });
-    let chat = {
-        initialized: false,
-        inputHistoryIndex: 0,
-        messageCache: [],
-        inputHistory: [],
-        init() {
-            if (this.initialized)
-                return console.warn('MPP.chat.init() called more than once!')
-            this.initialized = true
-            gClient.on('ch', msg => {
-                if (msg.ch.settings.chat) {
-                    this.show()
-                } else {
-                    this.hide()
-                }
-            })
-            gClient.on('disconnect', msg => {})
-            gClient.on('c', msg => {
-                this.clear()
-                if (msg.c) {
-                    for (var i = 0; i < msg.c.length; i++) {
-                        this.receive(msg.c[i])
-                    }
-                }
-            })
-            gClient.on('a', msg => {
-                this.receive(msg)
-                gHyperMod.receiveMessage(msg)
-            })
-            gClient.on('dm', msg => {
-                this.receive(msg)
-            })
-
-            $('#chat-input').on('focus', () => {
-                releaseKeyboard()
-                $('#chat').addClass('chatting')
-                chat.scrollToBottom()
-            })
-            $(document).on('mousedown', e => {
-                if ($('#chat').has(e.target as unknown as HTMLElement).length <= 0) {
-                    chat.blur()
-                }
-            })
-            document.addEventListener('touchstart', e => {
-                for (var i in e.changedTouches) {
-                    var touch = e.changedTouches[i]
-                    if ($('#chat').has(touch.target as unknown as HTMLElement).length <= 0) {
-                        chat.blur()
-                    }
-                }
-            })
-            $(document).on('keydown', e => {
-                if ($('#chat').hasClass('chatting')) {
-                    if (e.code === 'Escape') {
-                        chat.blur()
-                        if (!gNoPreventDefault) e.preventDefault()
-                        e.stopPropagation()
-                    } else if (e.code === 'Enter') {
-                        $('#chat-input').trigger('focus')
-                    }
-                } else if (!modal.current && (e.code == 'Escape' || e.code == 'Enter')) {
-                    $('#chat-input').trigger('focus')
-                }
-            })
-            $('#chat-input').on('input', e => {
-                if (!gClient.isConnected()) return
-                if (!(gHyperMod.lsSettings.showUsersWhenTyping ?? true)) return
-                if ((e.target as HTMLInputElement).value.length == 0) {
-                    stopTyping()
-                    if (gTypingTimeout) {
-                        gScheduler.clearTimeout(gTypingTimeout)
-                        gTypingTimeout = undefined
-                    }
-                    return updateTypingStatus()
-                }
-                if (!gTypingTimeout) {
-                    startTyping()
-                    updateTypingStatus()
-                    gTypingTimeout = gScheduler.setTimeout(() => {
-                        stopTyping()
-                        updateTypingStatus()
-                        gTypingTimeout = undefined
-                    }, 2000)
-                } else {
-                    gScheduler.rescheduleTimeout(gTypingTimeout, 2000)
-                }
-            })
-            $('#chat-input').on('keydown', e => {
-                switch (e.code) {
-                    case 'ArrowUp': // up
-                        if (chat.inputHistoryIndex <= 0)
-                            return
-                        chat.inputHistoryIndex -= 1
-                        $(e.target).val(chat.inputHistory[chat.inputHistoryIndex] ?? '')
-                        if (!gNoPreventDefault) e.preventDefault()
-                        e.stopPropagation()
-                        break
-                    case 'ArrowDown': // down
-                        if (chat.inputHistoryIndex >= chat.inputHistory.length)
-                            return
-                        chat.inputHistoryIndex += 1
-                        $(e.target).val(chat.inputHistory[chat.inputHistoryIndex] ?? '')
-                        if (!gNoPreventDefault) e.preventDefault()
-                        e.stopPropagation()
-                        break
-                    case 'Enter':
-                        var message = $(e.target).val() as string
-                        if (message.length == 0) {
-                            if (gIsDming) {
-                                chat.endDM()
-                            }
-                            if (gIsReplying) {
-                                chat.cancelReply()
-                            }
-                            if (gHyperMod.lsSettings.messageBlur ?? true)
-                                gScheduler.setTimeout(function () {
-                                    chat.blur()
-                                }, 100)
-                        } else {
-                            if (
-                                (
-                                    !(gHyperMod.lsSettings.showChatCommands ?? true) || 
-                                    !(gClient.isConnected() && gClient.channel)
-                                ) && 
-                                message.startsWith(gHyperMod.prefix) && 
-                                message !== gHyperMod.prefix
-                            ) {
-                                let msg: any = {
-                                    m: 'a',
-                                    a: message,
-                                    p: { ...gClient.getOwnParticipant() },
-                                    t: Date.now()
-                                }
-                                chat.receive(msg)
-                                gHyperMod.receiveMessage(msg)
-                            } else {
-                                if (gClient.isConnected() && gClient.channel)
-                                    chat.send(message)
-                                else {
-                                    let msg: any = {
-                                        m: 'a',
-                                        a: message,
-                                        p: { ...gClient.getOwnParticipant() },
-                                        t: Date.now()
-                                    }
-                                    chat.receive(msg)
-                                }
-                            }
-                            chat.inputHistory.push(message)
-                            chat.inputHistoryIndex = chat.inputHistory.length
-                            $(e.target).val('')
-                            stopTyping()
-                            updateTypingStatus()
-                            if (gHyperMod.lsSettings.messageBlur ?? true)
-                                gScheduler.setTimeout(function () {
-                                    chat.blur()
-                                }, 100)
-                        }
-                        if (!gNoPreventDefault) e.preventDefault()
-                        e.stopPropagation()
-                        break
-                    case 'Escape':
-                        chat.blur()
-                        if (!gNoPreventDefault) e.preventDefault()
-                        e.stopPropagation()
-                        break
-                    case 'Tab':
-                        if (!gNoPreventDefault) e.preventDefault()
-                        e.stopPropagation()
-                        break
-                }
-            })
-            var messageCache = [];
-        },
-        startDM: function (part) {
-            if (!this.initialized)
-                return
-            gIsDming = true
-            gDmParticipant = part;
-            ($('#chat-input')[0] as HTMLInputElement).placeholder = 'Direct messaging ' + part.name + '.'
-        },
-        endDM: function () {
-            if (!this.initialized)
-                return
-            gIsDming = false;
-            ($('#chat-input')[0] as HTMLInputElement).placeholder = globalThis.i18nextify.i18next.t('You can chat with this thing.')
-        },
-        startReply: function (part, id) {
-            if (!this.initialized)
-                return
-            $(`#msg-${gMessageId}`).css({
-                'background-color': 'unset',
-                border: '1px solid #00000000'
-            })
-            gIsReplying = true
-            gReplyParticipant = part
-            gMessageId = id;
-            ($('#chat-input')[0] as HTMLInputElement).placeholder = `Replying to ${part.name}`
-        },
-        startDmReply: function (part, id) {
-            if (!this.initialized)
-                return
-            $(`#msg-${gMessageId}`).css({
-                'background-color': 'unset',
-                border: '1px solid #00000000'
-            })
-            gIsReplying = true
-            gIsDming = true
-            gMessageId = id
-            gReplyParticipant = part
-            gDmParticipant = part;
-            ($('#chat-input')[0] as HTMLInputElement).placeholder = `Replying to ${part.name} in a DM.`
-        },
-        cancelReply: function () {
-            if (!this.initialized)
-                return
-            if (gIsDming) gIsDming = false
-            gIsReplying = false
-            $(`#msg-${gMessageId}`).css({
-                'background-color': 'unset',
-                border: '1px solid #00000000'
-            });
-            ($('#chat-input')[0] as HTMLInputElement).placeholder = globalThis.i18nextify.i18next.t(`You can chat with this thing.`)
-        },
-        show: function () {
-            if (!this.initialized)
-                return
-            $('#chat').fadeIn()
-        },
-        hide: function () {
-            if (!this.initialized)
-                return
-            $('#chat').fadeOut()
-        },
-        clear: function () {
-            if (!this.initialized)
-                return
-            $('#chat li').remove()
-        },
-        scrollToBottom: function () {
-            if (!this.initialized)
-                return
-            var ele = $('#chat ul').get(0)
-            ele.scrollTop = ele.scrollHeight - ele.clientHeight
-        },
-        blur: function () {
-            if (!this.initialized)
-                return
-            if ($('#chat').hasClass('chatting')) {
-                $('#chat-input').get(0).blur()
-                $('#chat').removeClass('chatting')
-                chat.scrollToBottom()
-                captureKeyboard()
-            }
-        },
-        send(message: string) {
-            if (!this.initialized)
-                return
-            if (gIsReplying) {
-                if (gIsDming) {
-                    gClient.sendArray([
-                        {
-                            m: 'dm',
-                            reply_to: gMessageId,
-                            _id: gReplyParticipant._id,
-                            message
-                        }
-                    ])
-                    gScheduler.setTimeout(() => {
-                        chat.cancelReply()
-                    }, 100)
-                } else {
-                    gClient.sendArray([
-                        {
-                            m: 'a',
-                            reply_to: gMessageId,
-                            _id: gReplyParticipant._id,
-                            message
-                        }
-                    ])
-                    gScheduler.setTimeout(() => {
-                        this.cancelReply()
-                    }, 100)
-                }
-            } else {
-                if (gIsDming) {
-                    gClient.sendArray([{ m: 'dm', _id: gDmParticipant._id, message }])
-                } else {
-                    gClient.sendArray([{ m: 'a', message }])
-                }
-            }
-        },
-        receive(msg: IncomingMessage['a'] | IncomingMessage['dm']) {
-            if (!this.initialized)
-                return
-            if (msg.m === 'dm') {
-                if (gChatMutes.indexOf(msg.sender._id) != -1) return
-            } else {
-                if (gChatMutes.indexOf(msg.p._id) != -1) return
-            }
-            //construct string for creating list element
-            var liString = msg.id ? `<li id="msg-${msg.id}">` : `<li>`
-            var isSpecialDm = false
-            if (msg.id)
-                if (msg.m === 'dm') {
-                    if (msg.sender._id === gClient.user._id || msg.recipient._id === gClient.user._id) {
-                        liString += `<span class="reply"/>`
-                    }
-                } else {
-                    liString += `<span class="reply"/>`
-                }
-            if (gShowTimestampsInChat) liString += '<span class="timestamp"/>'
-            if (msg.m === 'dm') {
-                if (msg.sender._id === gClient.user._id) {
-                    //sent dm
-                    liString += '<span class="sentDm"/>'
-                } else if (msg.recipient._id === gClient.user._id) {
-                    //received dm
-                    liString += '<span class="receivedDm"/>'
-                } else {
-                    //someone else's dm
-                    liString += '<span class="otherDm"/>'
-                    isSpecialDm = true
-                }
-            }
-            if (isSpecialDm) {
-                if (gShowIdsInChat) liString += '<span class="id"/>'
-                liString += '<span class="name"/><span class="dmArrow"/>'
-                if (gShowIdsInChat) liString += '<span class="id2"/>'
-                liString += '<span class="name2"/><span class="message"/>'
-            } else {
-                if (gShowIdsInChat) liString += '<span class="id"/>'
-                liString += '<span class="name"/>'
-                if (msg.r) liString += `<span class="replyLink"/>`
-                liString += '<span class="message"/>'
-            }
-            var li = $(liString)
-            if (msg.id)
-                li.find(`.reply`).text('➦')
-            if (msg.r) {
-                var repliedMsg = this.messageCache.find(e => e.id === msg.r)
-                if (!tabIsActive) {
-                    if (repliedMsg?.p?._id === gClient.user._id) {
-                        document.title = `You have received a reply!`
-                        if ((gHyperMod.lsSettings.sendNotifications ?? true) && Notification.permission === 'granted')
-                            new Notification(`You have received a reply!`, {
-                                body: `${msg.m === 'dm' ? msg.sender.name : msg.p.name} has replied to your message.`,
-                            })
-                        youreReplied = true
-                    }
-                }
-                if (repliedMsg) {
-                    li.find('.replyLink').text(`➥ ${repliedMsg.m === 'dm' ? repliedMsg.sender.name : repliedMsg.p.name}`)
-                    li.find('.replyLink').css({
-                        background: `${
-                            (repliedMsg?.m === 'dm' ? repliedMsg?.sender?.color : repliedMsg?.p?.color) ?? 'gray'
-                        }`
-                    })
-                    li.find('.replyLink').on('click', (evt) => {
-                        $('#chat-input').focus()
-                        document.getElementById(`msg-${repliedMsg?.id}`).scrollIntoView({ behavior: 'smooth' })
-                        $(`#msg-${repliedMsg?.id}`).css({
-                            border: `1px solid ${
-                                repliedMsg?.m === 'dm' ? repliedMsg.sender?.color : repliedMsg.p?.color
-                            }80`,
-                            'background-color': `${
-                                repliedMsg?.m === 'dm' ? repliedMsg.sender?.color : repliedMsg.p?.color
-                            }20`
-                        })
-                        gScheduler.setTimeout(() => {
-                            $(`#msg-${repliedMsg?.id}`).css({
-                                'background-color': 'unset',
-                                border: '1px solid #00000000'
-                            })
-                        }, 5000)
-                    })
-                } else {
-                    li.find('.replyLink').text('➥ Unknown Message')
-                    li.find('.replyLink').css({ background: 'gray' })
-                }
-            }
-            //prefix before dms so people know it's a dm
-            if (msg.m === 'dm') {
-                if (msg.sender._id === gClient.user._id) {
-                    //sent dm
-                    li.find('.sentDm').text('To')
-                    li.find('.sentDm').css('color', '#ff55ff')
-                } else if (msg.recipient._id === gClient.user._id) {
-                    //received dm
-                    li.find('.receivedDm').text('From')
-                    li.find('.receivedDm').css('color', '#ff55ff')
-                } else {
-                    //someone else's dm
-                    li.find('.otherDm').text('DM')
-                    li.find('.otherDm').css('color', '#ff55ff')
-                    li.find('.dmArrow').text('->')
-                    li.find('.dmArrow').css('color', '#ff55ff')
-                }
-            }
-            if (gShowTimestampsInChat) {
-                li.find('.timestamp').text(new Date(msg.t).toLocaleTimeString())
-            }
-            let message = parseMarkdown(parseContent(msg.a), parseUrl).replace(/@([\da-f]{24})/g, (match, id) => {
-                let user = gClient.ppl[id]
-                if (user) {
-                    let nick = parseContent(user.name)
-                    if (user.id === gClient.getOwnParticipant().id) {
-                        if (!tabIsActive) {
-                            youreMentioned = true
-                            document.title = globalThis.i18nextify.i18next.t('You were mentioned!')
-                            if ((gHyperMod.lsSettings.sendNotifications ?? true) && Notification.permission === 'granted')
-                                new Notification(globalThis.i18nextify.i18next.t('You were mentioned!'), {
-                                    body: `${msg.m === 'dm' ? msg.sender.name : msg.p.name} has mentioned you in chat.`,
-                                })
-                        }
-                        return `<span class="mention" style="background-color: ${user.color};">${nick}</span>`
-                    } else return `@${nick}`
-                } else return match
-            })
-            //apply names, colors, ids
-            li.find('.message').html(message)
-            if (msg.m === 'dm') {
-                if (!gNoChatColors) li.find('.message').css('color', msg.sender.color || 'white')
-                if (gShowIdsInChat) {
-                    if (msg.sender._id === gClient.user._id) {
-                        li.find('.id').text(msg.recipient._id.substring(0, 6))
-                    } else {
-                        li.find('.id').text(msg.sender._id.substring(0, 6))
-                    }
-                }
-                if (msg.sender._id === gClient.user._id) {
-                    //sent dm
-                    if (!gNoChatColors) li.find('.name').css('color', msg.recipient.color || 'white')
-                    li.find('.name').text(msg.recipient.name + ':')
-                    if (gShowChatTooltips) li[0].title = msg.recipient._id
-                } else if (msg.recipient._id === gClient.user._id) {
-                    //received dm
-                    if (!gNoChatColors) li.find('.name').css('color', msg.sender.color || 'white')
-                    li.find('.name').text(msg.sender.name + ':')
-                    if (gShowChatTooltips) li[0].title = msg.sender._id
-                } else {
-                    //someone else's dm
-                    if (!gNoChatColors) li.find('.name').css('color', msg.sender.color || 'white')
-                    if (!gNoChatColors) li.find('.name2').css('color', msg.recipient.color || 'white')
-                    li.find('.name').text(msg.sender.name)
-                    li.find('.name2').text(msg.recipient.name + ':')
-                    if (gShowIdsInChat) li.find('.id').text(msg.sender._id.substring(0, 6))
-                    if (gShowIdsInChat) li.find('.id2').text(msg.recipient._id.substring(0, 6))
-                    if (gShowChatTooltips) li[0].title = msg.sender._id
-                }
-            } else {
-                if (!gNoChatColors) li.find('.message').css('color', msg.p.color || 'white')
-                if (!gNoChatColors) li.find('.name').css('color', msg.p.color || 'white')
-                li.find('.name').text(msg.p.name + ':')
-                if (!gNoChatColors) li.find('.message').css('color', msg.p.color || 'white')
-                if (gShowIdsInChat) li.find('.id').text(msg.p._id.substring(0, 6))
-                if (gShowChatTooltips) li[0].title = msg.p._id
-            }
-            //Adds copying _ids on click in chat
-            li.find('.id').on('click', (evt) => {
-                if (msg.m === 'dm') {
-                    navigator.clipboard.writeText(msg.sender._id === gClient.user._id ? msg.recipient._id : msg.sender._id)
-                    li.find('.id').text('Copied')
-                    gScheduler.setTimeout(() => {
-                        li.find('.id').text(
-                            (msg.sender._id === gClient.user._id ? msg.recipient._id : msg.sender._id).substring(0, 6)
-                        )
-                    }, 2500)
-                } else {
-                    navigator.clipboard.writeText(msg.p._id)
-                    li.find('.id').text('Copied')
-                    gScheduler.setTimeout(() => {
-                        li.find('.id').text(msg.p._id.substring(0, 6))
-                    }, 2500)
-                }
-            })
-            li.find('.id2').on('click', () => {
-                if (msg.m !== 'dm')
-                    return
-                navigator.clipboard.writeText(msg.recipient._id)
-                li.find('.id2').text('Copied')
-                gScheduler.setTimeout(() => {
-                    li.find('.id2').text(msg.recipient._id.substring(0, 6))
-                }, 2500)
-            })
-            //Reply button click event listener
-            li.find('.reply').on('click', () => {
-                if (msg.m !== 'dm') {
-                    chat.startReply(msg.p, msg.id)
-                    gScheduler.setTimeout(() => {
-                        $(`#msg-${msg.id}`).css({
-                            border: `1px solid ${msg?.m === 'a' ? msg.p?.color : (msg as any).sender?.color}80`,
-                            'background-color': `${msg?.m === 'a' ? msg.p?.color : (msg as any).sender?.color}20`
-                        })
-                    }, 100)
-                    gScheduler.setTimeout(() => {
-                        $('#chat-input').trigger('focus')
-                    }, 100)
-                } else {
-                    if (msg.m === 'dm') {
-                        let replyingTo = msg.sender._id === gClient.user._id ? msg.recipient : msg.sender
-                        if (gClient.ppl[replyingTo._id]) {
-                            chat.startDmReply(replyingTo, msg.id)
-                            gScheduler.setTimeout(() => {
-                                $(`#msg-${msg.id}`).css({
-                                    border: `1px solid ${msg?.m === 'dm' ? msg.sender?.color : (msg as any).p?.color}80`,
-                                    'background-color': `${msg?.m === 'dm' ? msg.sender?.color : (msg as any).p?.color}20`
-                                })
-                            }, 100)
-                            gScheduler.setTimeout(() => {
-                                $('#chat-input').trigger('focus')
-                            }, 100)
-                        } else {
-                            new SiteNotification({
-                                target: '#piano',
-                                title: 'User not found.',
-                                text: 'The user who you are trying to reply to in a DM is not found, so a DM could not be started.'
-                            })
-                        }
-                    }
-                }
-            })
-            //put list element in chat
-            $('#chat ul').append(li)
-            this.messageCache.push(msg)
-            var eles = $('#chat ul li').get()
-            for (var i = 1; i <= 50 && i <= eles.length; i++) {
-                eles[eles.length - i].style.opacity = (1.0 - i * 0.03).toFixed(2)
-            }
-            if (eles.length > 50) {
-                eles[0].style.display = 'none'
-            }
-            if (eles.length > 256) {
-                this.messageCache.shift()
-                $(eles[0]).remove()
-            }
-            // scroll to bottom if not "chatting" or if not scrolled up
-            if (!$('#chat').hasClass('chatting')) {
-                chat.scrollToBottom()
-            } else {
-                var ele = $('#chat ul').get(0)
-                if (ele.scrollTop > ele.scrollHeight - ele.offsetHeight - 50) chat.scrollToBottom()
-            }
-        }
-    }
-    chat.init()
     // MIDI
 
     ////////////////////////////////////////////////////////////////
 
     let MIDI_TRANSPOSE = -12
-    let MIDI_KEY_NAMES = ['a-1', 'as-1', 'b-1']
-    let bare_notes = 'c cs d ds e f fs g gs a as b'.split(' ')
-    for (var oct = 0; oct < 7; oct++) {
-        for (var i in bare_notes) {
-            MIDI_KEY_NAMES.push(bare_notes[i] + oct)
-        }
-    }
-    MIDI_KEY_NAMES.push('c7')
 
     var devices_json = '[]'
     function sendDevices() {
@@ -3741,7 +4017,7 @@ $(function() {
                                 }
                             }
                         })
-                        if (gMidiVolumeTest) {
+                        if (midiVolumeTest) {
                             var knob = document.createElement('canvas')
                             Object.assign(knob, {
                                 width: 16 * globalThis.devicePixelRatio,
@@ -3795,7 +4071,7 @@ $(function() {
                                 }
                             }
                         })
-                        if (gMidiVolumeTest) {
+                        if (midiVolumeTest) {
                             var knob = document.createElement('canvas')
                             Object.assign(knob, {
                                 width: 16 * globalThis.devicePixelRatio,
@@ -3837,158 +4113,6 @@ $(function() {
                 })
             }
                 */
-    let gMidi = {
-        access : null,
-        inputs : [],
-        outputs: [],
-        messageBuffer: [new Uint8Array(3), new Uint8Array(3)],
-        connectionsNotif: null,
-        noteOn(note, vel, delay, part) {
-            if (this.outputs.length === 0)
-                return false
-            if (vel <= (gHyperMod.lsSettings.midiOutputVelocityThreshold ?? 0))
-                return false
-            let noteNum = MIDI_KEY_MAP[note]
-            if (noteNum === undefined) 
-                return false
-            noteNum = noteNum + 9 - MIDI_TRANSPOSE
-            gScheduler.setTimeout(() => {
-                for (let output of this.outputs) {
-                    if (!output.enabled)
-                        continue
-                    let channel = participantChannel[part]
-                    let status  = (vel <= 0 ? 0x80 : 0x90) | (channel == 9 ? (channel + 1) & 0xf : channel)
-                    this.messageBuffer[0][0] = status
-                    this.messageBuffer[0][1] = noteNum
-                    this.messageBuffer[0][2] = vel
-                    output.port.send(this.messageBuffer[0])
-                }
-                return true
-            }, delay)
-        },
-        noteOff(note, delay, part) {
-            if (this.outputs.length === 0)
-                return false
-            let noteNum = MIDI_KEY_MAP[note]
-            if (noteNum === undefined) 
-                return false
-            noteNum = noteNum + 9 - MIDI_TRANSPOSE
-            gScheduler.setTimeout(() => {
-                for (let output of this.outputs) {
-                    if (!output.enabled)
-                        continue
-                    let channel = participantChannel[part]
-                    let status  = 0x80 | (channel == 9 ? (channel + 1) & 0xf : channel)
-                    this.messageBuffer[1][0] = status
-                    this.messageBuffer[1][1] = noteNum
-                    this.messageBuffer[1][2] = 0
-                    output.port.send(this.messageBuffer[1])
-                }
-            }, delay)
-            return true
-        },
-        showConnections(sticky) {
-            //if(document.getElementById("Notification-MIDI-Connections"))
-            //sticky = 1; // todo: instead,
-            var inputs_ul = document.createElement('ul')
-            let midiToggles = JSON.parse(localStorage['hm.midiToggles'] ?? '{"inputs":{},"outputs":{}}')
-            if (this.inputs.length > 0) {
-                for (let input of this.inputs) {
-                    var li = document.createElement('li')
-                    li.classList.add('connection')
-                    if (input.enabled) {
-                        li.classList.add('enabled')
-                    }
-                    li.textContent = input.port.name
-                    $(li).on('click', e => {
-                        input.enabled = !input.enabled
-                        if (!midiToggles.inputs)
-                            midiToggles.inputs = {}
-                        midiToggles.inputs[input.port.name] = input.enabled
-                        localStorage['hm.midiToggles'] = JSON.stringify(midiToggles)
-                        e.target.classList.toggle('enabled')
-                    })
-                    $(inputs_ul).append(li)
-                }
-            } else {
-                inputs_ul.textContent = '(none)'
-            }
-            var outputs_ul = document.createElement('ul')
-            if (this.outputs.length > 0) {
-                for (let output of this.outputs) {
-                    var li = document.createElement('li')
-                    li.classList.add('connection')
-                    if (output.enabled) {
-                        li.classList.add('enabled')
-                    }
-                    li.textContent = output.port.name
-                    $(li).on('click', e => {
-                        output.enabled = !output.enabled
-                        if (!midiToggles.outputs)
-                            midiToggles.outputs = {}
-                        midiToggles.outputs[output.port.name] = output.enabled
-                        localStorage['hm.midiToggles'] = JSON.stringify(midiToggles)
-                        e.target.classList.toggle('enabled')
-                    })
-                    $(outputs_ul).append(li)
-                }
-            } else {
-                outputs_ul.textContent = '(none)'
-            }
-            outputs_ul.setAttribute('translated', '')
-            inputs_ul.setAttribute('translated', '')
-            let div = document.createElement('div')
-            let h1_inputs = document.createElement('h1')
-            let h1_outputs = document.createElement('h1')
-            h1_inputs.textContent = 'Inputs'
-            $(div).append(h1_inputs)
-            $(div).append(inputs_ul)
-            h1_outputs.textContent = 'Outputs'
-            $(div).append(h1_outputs)
-            $(div).append(outputs_ul)
-            this.connectionsNotif = new SiteNotification({
-                id: 'MIDI-Connections',
-                title: 'MIDI Connections',
-                duration: sticky ? '-1' : '4500',
-                html: div,
-                target: '#midi-btn'
-            })
-        }
-    };
-    (async function () {
-        if (navigator.requestMIDIAccess) {
-            let midi = await navigator.requestMIDIAccess()
-            let midiToggles = JSON.parse(localStorage['hm.midiToggles'] ?? '{"inputs":{},"outputs":{}}')
-            gMidi.access  = midi
-            gMidi.inputs  = Array.from(midi.inputs .values()).map(a => ({ enabled: midiToggles.inputs[a.name] ?? true, port: a }))
-            gMidi.outputs = Array.from(midi.outputs.values()).map(a => ({ enabled: midiToggles.outputs[a.name] ?? false, port: a }))
-            for (let input of gMidi.inputs) {
-                input.port.addEventListener('midimessage', e => {
-                    let status  = e.data[0]
-                    let opcode  = status >> 0x4
-                    let channel = status &  0xf
-                    switch (opcode) {
-                        case 0x09: // note event
-                        case 0x08:
-                            let note = e.data[1]
-                            let vel  = e.data[2]
-                            if (opcode == 0x08 || vel == 0) // note off
-                                keyboard.release(MIDI_KEY_NAMES[note - 9 + MIDI_TRANSPOSE + transpose + pitchBends[channel]])
-                            else // note on
-                                keyboard.press(MIDI_KEY_NAMES[note - 9 + MIDI_TRANSPOSE + transpose + pitchBends[channel]], vel / 127)
-                            break
-                    }
-                })
-            }
-            document.getElementById('midi-btn').addEventListener('click', function (evt) {
-                if (!document.getElementById('Notification-MIDI-Connections')) gMidi.showConnections(true)
-                else {
-                    gMidi.connectionsNotif.close()
-                }
-            })
-            gMidi.showConnections(false)
-        }
-    })()
     // bug supply
 
     ////////////////////////////////////////////////////////////////
@@ -4049,7 +4173,11 @@ $(function() {
         pressSustain: keyboard.sustainDown.bind(keyboard),
         releaseSustain: keyboard.sustainUp.bind(keyboard),
         keyboard,
-        midi: gMidi,
+        midi,
+        tsparticles,
+        background,
+        scheduler,
+        modal,
         addons: {
             hyperMod: gHyperMod
         },
@@ -4060,8 +4188,6 @@ $(function() {
         noteQuota: gNoteQuota,
         normalNoteQuotaParams,
         soundSelector: gSoundSelector,
-        scheduler: gScheduler,
-        modal
     }
 
     // synth
@@ -4070,7 +4196,7 @@ $(function() {
     var context = gPiano.audio.context
     var synth_gain = context.createGain()
     synth_gain.gain.value = 0.05
-    synth_gain.connect(audio.synthGain)
+    audio instanceof AudioEngineWeb ? synth_gain.connect(audio.synthGain) : synth_gain.connect(audio.masterGain)
 
     var osc_types = ['sine', 'square', 'sawtooth', 'triangle']
     var osc_type_index = 1
@@ -4132,7 +4258,7 @@ $(function() {
                 button.addEventListener('click', function (evt) {
                     enableSynth = !enableSynth
                     button.className = enableSynth ? 'switched-on' : 'switched-off'
-                    if (!enableSynth) {
+                    if (!enableSynth && audio instanceof AudioEngineWeb) {
                         // stop all
                         for (var i in audio.playings) {
                             if (!audio.playings.hasOwnProperty(i)) continue
@@ -4160,8 +4286,8 @@ $(function() {
             knob.canvas.style.height = '32px'
             knob.on('change', function (k) {
                 var mix = k.value / 100
-                audio.pianoGain.gain.value = 1 - mix
-                audio.synthGain.gain.value = mix
+                if (audio instanceof AudioEngineWeb) audio.pianoGain.gain.value = 1 - mix
+                if (audio instanceof AudioEngineWeb) audio.synthGain.gain.value = mix
             })
             knob.emit('change', knob)
 
@@ -4284,13 +4410,13 @@ $(function() {
                     var setting = document.createElement('div')
                     setting.classList = 'setting'
                     setting.innerText = 'Show user IDs in chat'
-                    if (gShowIdsInChat) {
+                    if (storage.gShowIdsInChat) {
                         setting.classList.toggle('enabled')
                     }
                     setting.onclick = function () {
                         setting.classList.toggle('enabled')
                         localStorage.showIdsInChat = setting.classList.contains('enabled')
-                        gShowIdsInChat = setting.classList.contains('enabled')
+                        storage.gShowIdsInChat = setting.classList.contains('enabled')
                     }
                     html.appendChild(setting)
                 })()
@@ -4300,13 +4426,13 @@ $(function() {
                     var setting = document.createElement('div')
                     setting.classList = 'setting'
                     setting.innerText = 'Timestamps in chat'
-                    if (gShowTimestampsInChat) {
+                    if (storage.gShowTimestampsInChat) {
                         setting.classList.toggle('enabled')
                     }
                     setting.onclick = function () {
                         setting.classList.toggle('enabled')
                         localStorage.showTimestampsInChat = setting.classList.contains('enabled')
-                        gShowTimestampsInChat = setting.classList.contains('enabled')
+                        storage.gShowTimestampsInChat = setting.classList.contains('enabled')
                     }
                     html.appendChild(setting)
                 })()
@@ -4316,13 +4442,13 @@ $(function() {
                     var setting = document.createElement('div')
                     setting.classList = 'setting'
                     setting.innerText = 'No chat colors'
-                    if (gNoChatColors) {
+                    if (storage.gNoChatColors) {
                         setting.classList.toggle('enabled')
                     }
                     setting.onclick = function () {
                         setting.classList.toggle('enabled')
                         localStorage.noChatColors = setting.classList.contains('enabled')
-                        gNoChatColors = setting.classList.contains('enabled')
+                        storage.gNoChatColors = setting.classList.contains('enabled')
                     }
                     html.appendChild(setting)
                 })()
@@ -4332,17 +4458,17 @@ $(function() {
                     var setting = document.createElement('div')
                     setting.classList = 'setting'
                     setting.innerText = 'Force dark background'
-                    if (gNoBackgroundColor) {
+                    if (storage.gNoBackgroundColor) {
                         setting.classList.toggle('enabled')
                     }
                     setting.onclick = function () {
                         setting.classList.toggle('enabled')
                         localStorage.noBackgroundColor = setting.classList.contains('enabled')
-                        gNoBackgroundColor = setting.classList.contains('enabled')
-                        if (gClient.channel.settings.color && !gNoBackgroundColor) {
-                            globalThis.setBackgroundColor(gClient.channel.settings.color, gClient.channel.settings.color2)
+                        storage.gNoBackgroundColor = setting.classList.contains('enabled')
+                        if (gClient.channel.settings.color && !storage.gNoBackgroundColor) {
+                            background.setColor(gClient.channel.settings.color, gClient.channel.settings.color2)
                         } else {
-                            globalThis.setBackgroundColorToDefault()
+                            background.reset()
                         }
                     }
                     html.appendChild(setting)
@@ -4353,13 +4479,13 @@ $(function() {
                     var setting = document.createElement('div')
                     setting.classList = 'setting'
                     setting.innerText = 'Output own notes to MIDI'
-                    if (gOutputOwnNotes) {
+                    if (storage.gOutputOwnNotes) {
                         setting.classList.toggle('enabled')
                     }
                     setting.onclick = function () {
                         setting.classList.toggle('enabled')
                         localStorage.outputOwnNotes = setting.classList.contains('enabled')
-                        gOutputOwnNotes = setting.classList.contains('enabled')
+                        storage.gOutputOwnNotes = setting.classList.contains('enabled')
                     }
                     html.appendChild(setting)
                 })()
@@ -4369,31 +4495,31 @@ $(function() {
                     var setting = document.createElement('div')
                     setting.classList = 'setting'
                     setting.innerText = 'Virtual Piano layout'
-                    if (gVirtualPianoLayout) {
+                    if (storage.gVirtualPianoLayout) {
                         setting.classList.toggle('enabled')
                     }
                     setting.onclick = function () {
                         setting.classList.toggle('enabled')
                         localStorage.virtualPianoLayout = setting.classList.contains('enabled')
-                        gVirtualPianoLayout = setting.classList.contains('enabled')
-                        key_binding = gVirtualPianoLayout ? layouts.VP : layouts.MPP
+                        storage.gVirtualPianoLayout = setting.classList.contains('enabled')
+                        key_binding = storage.gVirtualPianoLayout ? layouts.VP : layouts.MPP
                     }
                     html.appendChild(setting)
                 })()
 
-                // 			gShowChatTooltips
+                // 			storage.gShowChatTooltips
                 // Show chat tooltips for _ids.
                 ;(function () {
                     var setting = document.createElement('div')
                     setting.classList = 'setting'
                     setting.innerText = 'Show _id tooltips'
-                    if (gShowChatTooltips) {
+                    if (storage.gShowChatTooltips) {
                         setting.classList.toggle('enabled')
                     }
                     setting.onclick = function () {
                         setting.classList.toggle('enabled')
                         localStorage.showChatTooltips = setting.classList.contains('enabled')
-                        gShowChatTooltips = setting.classList.contains('enabled')
+                        storage.gShowChatTooltips = setting.classList.contains('enabled')
                     }
                     html.appendChild(setting)
                 })()
@@ -4401,13 +4527,13 @@ $(function() {
                     var setting = document.createElement('div')
                     setting.classList = 'setting'
                     setting.innerText = 'Show Piano Notes'
-                    if (gShowPianoNotes) {
+                    if (storage.gShowPianoNotes) {
                         setting.classList.toggle('enabled')
                     }
                     setting.onclick = function () {
                         setting.classList.toggle('enabled')
                         localStorage.showPianoNotes = setting.classList.contains('enabled')
-                        gShowPianoNotes = setting.classList.contains('enabled')
+                        storage.gShowPianoNotes = setting.classList.contains('enabled')
                     }
                     html.appendChild(setting)
                 })()
@@ -4417,20 +4543,20 @@ $(function() {
                     var setting = document.createElement('div')
                     setting.classList = 'setting'
                     setting.innerText = 'Enable smooth cursors'
-                    if (gSmoothCursor) {
+                    if (storage.gSmoothCursor) {
                         setting.classList.toggle('enabled')
                     }
                     let accounts = Object.values(gClient.ppl)
                     setting.onclick = function () {
                         setting.classList.toggle('enabled')
                         localStorage.smoothCursor = setting.classList.contains('enabled')
-                        gSmoothCursor = setting.classList.contains('enabled')
-                        if (gSmoothCursor) {
+                        storage.gSmoothCursor = setting.classList.contains('enabled')
+                        if (storage.gSmoothCursor) {
                             $('#cursors').attr('smooth-cursors', '')
                         } else {
                             $('#cursors').removeAttr('smooth-cursors')
                         }
-                        if (gSmoothCursor) {
+                        if (storage.gSmoothCursor) {
                             accounts.forEach(function (participant) {
                                 if (participant.cursorDiv) {
                                     participant.cursorDiv.style.left = ''
@@ -4460,24 +4586,24 @@ $(function() {
                     let keys = Object.keys(BASIC_PIANO_SCALES) // lol
                     let option = document.createElement('option')
                     option.value = option.innerText = 'No highlighted notes'
-                    option.selected = !gHighlightScaleNotes
+                    option.selected = !storage.gHighlightScaleNotes
                     setting.appendChild(option)
 
                     for (let key of keys) {
                         let option = document.createElement('option')
                         option.value = key
                         option.innerText = key
-                        option.selected = key === gHighlightScaleNotes
+                        option.selected = key === storage.gHighlightScaleNotes
                         setting.appendChild(option)
                     }
 
-                    if (gHighlightScaleNotes) {
-                        setting.value = gHighlightScaleNotes
+                    if (storage.gHighlightScaleNotes) {
+                        setting.value = storage.gHighlightScaleNotes
                     }
 
                     setting.onchange = function () {
                         localStorage.highlightScaleNotes = setting.value
-                        gHighlightScaleNotes = setting.value
+                        storage.gHighlightScaleNotes = setting.value
                     }
                     html.appendChild(setting)
                 })()
@@ -4485,14 +4611,14 @@ $(function() {
                     var setting = document.createElement('div')
                     setting.classList = 'setting'
                     setting.innerText = 'Hide all cursors'
-                    if (gHideAllCursors) {
+                    if (storage.gHideAllCursors) {
                         setting.classList.toggle('enabled')
                     }
                     setting.onclick = function () {
                         setting.classList.toggle('enabled')
                         localStorage.hideAllCursors = setting.classList.contains('enabled')
-                        gHideAllCursors = setting.classList.contains('enabled')
-                        if (gHideAllCursors) {
+                        storage.gHideAllCursors = setting.classList.contains('enabled')
+                        if (storage.gHideAllCursors) {
                             $('#cursors').hide()
                         } else {
                             $('#cursors').show()
@@ -4583,35 +4709,35 @@ $(function() {
                         createSetting(
                             'show-timestamps-in-chat',
                             'Show timestamps in chat',
-                            gShowTimestampsInChat,
+                            storage.gShowTimestampsInChat,
                             true,
                             html,
                             () => {
-                                gShowTimestampsInChat = !gShowTimestampsInChat
-                                localStorage.showTimestampsInChat = gShowTimestampsInChat
+                                storage.gShowTimestampsInChat = !storage.gShowTimestampsInChat
+                                localStorage.showTimestampsInChat = storage.gShowTimestampsInChat
                             }
                         )
 
-                        createSetting('show-user-ids-in-chat', 'Show user IDs in chat', gShowIdsInChat, true, html, () => {
-                            gShowIdsInChat = !gShowIdsInChat
-                            localStorage.showIdsInChat = gShowIdsInChat
+                        createSetting('show-user-ids-in-chat', 'Show user IDs in chat', storage.gShowIdsInChat, true, html, () => {
+                            storage.gShowIdsInChat = !storage.gShowIdsInChat
+                            localStorage.showIdsInChat = storage.gShowIdsInChat
                         })
 
-                        createSetting('show-id-tooltips', 'Show ID tooltips', gShowChatTooltips, true, html, () => {
-                            gShowChatTooltips = !gShowChatTooltips
-                            localStorage.showChatTooltips = gShowChatTooltips
+                        createSetting('show-id-tooltips', 'Show ID tooltips', storage.gShowChatTooltips, true, html, () => {
+                            storage.gShowChatTooltips = !storage.gShowChatTooltips
+                            localStorage.showChatTooltips = storage.gShowChatTooltips
                         })
 
-                        createSetting('no-chat-colors', 'No chat colors', gNoChatColors, true, html, () => {
-                            gNoChatColors = !gNoChatColors
-                            localStorage.noChatColors = gNoChatColors
+                        createSetting('no-chat-colors', 'No chat colors', storage.gNoChatColors, true, html, () => {
+                            storage.gNoChatColors = !storage.gNoChatColors
+                            localStorage.noChatColors = storage.gNoChatColors
                         })
 
-                        createSetting('hide-chat', 'Hide chat', gHideChat, false, html, () => {
-                            gHideChat = !gHideChat
-                            localStorage.hideChat = gHideChat
+                        createSetting('hide-chat', 'Hide chat', storage.gHideChat, false, html, () => {
+                            storage.gHideChat = !storage.gHideChat
+                            localStorage.hideChat = storage.gHideChat
 
-                            if (gHideChat) {
+                            if (storage.gHideChat) {
                                 $('#chat').hide()
                             } else {
                                 $('#chat').show()
@@ -4627,12 +4753,12 @@ $(function() {
                         createSetting(
                             'output-own-notes-to-midi',
                             'Output own notes to MIDI',
-                            gOutputOwnNotes,
+                            storage.gOutputOwnNotes,
                             true,
                             html,
                             () => {
-                                gOutputOwnNotes = !gOutputOwnNotes
-                                localStorage.outputOwnNotes = gOutputOwnNotes
+                                storage.gOutputOwnNotes = !storage.gOutputOwnNotes
+                                localStorage.outputOwnNotes = storage.gOutputOwnNotes
                             }
                         )
 
@@ -4654,22 +4780,22 @@ $(function() {
                     case 'piano':
                         var html = document.createElement('div')
 
-                        createSetting('virtual-piano-layout', 'Virtual Piano layout', gVirtualPianoLayout, true, html, () => {
-                            gVirtualPianoLayout = !gVirtualPianoLayout
-                            localStorage.virtualPianoLayout = gVirtualPianoLayout
-                            key_binding = gVirtualPianoLayout ? layouts.VP : layouts.MPP
+                        createSetting('virtual-piano-layout', 'Virtual Piano layout', storage.gVirtualPianoLayout, true, html, () => {
+                            storage.gVirtualPianoLayout = !storage.gVirtualPianoLayout
+                            localStorage.virtualPianoLayout = storage.gVirtualPianoLayout
+                            key_binding = storage.gVirtualPianoLayout ? layouts.VP : layouts.MPP
                         })
 
-                        createSetting('show-piano-notes', 'Show piano notes', gShowPianoNotes, true, html, () => {
-                            gShowPianoNotes = !gShowPianoNotes
-                            localStorage.showPianoNotes = gShowPianoNotes
+                        createSetting('show-piano-notes', 'Show piano notes', storage.gShowPianoNotes, true, html, () => {
+                            storage.gShowPianoNotes = !storage.gShowPianoNotes
+                            localStorage.showPianoNotes = storage.gShowPianoNotes
                         })
 
-                        createSetting('hide-piano', 'Hide piano', gHidePiano, true, html, () => {
-                            gHidePiano = !gHidePiano
-                            localStorage.hidePiano = gHidePiano
+                        createSetting('hide-piano', 'Hide piano', storage.gHidePiano, true, html, () => {
+                            storage.gHidePiano = !storage.gHidePiano
+                            localStorage.hidePiano = storage.gHidePiano
 
-                            if (gHidePiano) {
+                            if (storage.gHidePiano) {
                                 $('#piano').hide()
                             } else {
                                 $('#piano').show()
@@ -4682,25 +4808,25 @@ $(function() {
 
                         setting.onchange = () => {
                             localStorage.highlightScaleNotes = setting.value
-                            gHighlightScaleNotes = setting.value
+                            storage.gHighlightScaleNotes = setting.value
                         }
 
                         let keys = Object.keys(BASIC_PIANO_SCALES) // lol
                         let option = document.createElement('option')
                         option.value = option.innerText = 'None'
-                        option.selected = !gHighlightScaleNotes
+                        option.selected = !storage.gHighlightScaleNotes
                         setting.appendChild(option)
 
                         for (let key of keys) {
                             let option = document.createElement('option')
                             option.value = key
                             option.innerText = key
-                            option.selected = key === gHighlightScaleNotes
+                            option.selected = key === storage.gHighlightScaleNotes
                             setting.appendChild(option)
                         }
 
-                        if (gHighlightScaleNotes) {
-                            setting.value = gHighlightScaleNotes
+                        if (storage.gHighlightScaleNotes) {
+                            setting.value = storage.gHighlightScaleNotes
                         }
 
                         var label = document.createElement('label')
@@ -4720,30 +4846,30 @@ $(function() {
                         createSetting(
                             'dont-use-prevent-default',
                             "Don't use prevent default",
-                            gNoChatColors,
+                            storage.gNoChatColors,
                             true,
                             html,
                             () => {
-                                gNoPreventDefault = !gNoPreventDefault
-                                localStorage.noPreventDefault = gNoPreventDefault
+                                storage.gNoPreventDefault = !storage.gNoPreventDefault
+                                localStorage.noPreventDefault = storage.gNoPreventDefault
                             }
                         )
 
-                        createSetting('force-dark-background', 'Force dark background', gNoBackgroundColor, true, html, () => {
-                            gNoBackgroundColor = !gNoBackgroundColor
-                            localStorage.noBackgroundColor = gNoBackgroundColor
+                        createSetting('force-dark-background', 'Force dark background', storage.gNoBackgroundColor, true, html, () => {
+                            storage.gNoBackgroundColor = !storage.gNoBackgroundColor
+                            localStorage.noBackgroundColor = storage.gNoBackgroundColor
 
-                            if (gClient.channel.settings.color && !gNoBackgroundColor) {
-                                globalThis.setBackgroundColor(gClient.channel.settings.color, gClient.channel.settings.color2)
+                            if (gClient.channel.settings.color && !storage.gNoBackgroundColor) {
+                                background.setColor(gClient.channel.settings.color, gClient.channel.settings.color2)
                             } else {
-                                globalThis.setBackgroundColorToDefault()
+                                background.reset()
                             }
                         })
                         let accounts = Object.values(gClient.ppl)
-                        createSetting('enable-smooth-cursors', 'Enable smooth cursors', gSmoothCursor, true, html, () => {
-                            gSmoothCursor = !gSmoothCursor
-                            localStorage.smoothCursor = gSmoothCursor
-                            if (gSmoothCursor) {
+                        createSetting('enable-smooth-cursors', 'Enable smooth cursors', storage.gSmoothCursor, true, html, () => {
+                            storage.gSmoothCursor = !storage.gSmoothCursor
+                            localStorage.smoothCursor = storage.gSmoothCursor
+                            if (storage.gSmoothCursor) {
                                 $('#cursors').attr('smooth-cursors', '')
                                 accounts.forEach(function (participant) {
                                     if (participant.cursorDiv) {
@@ -4765,25 +4891,25 @@ $(function() {
                             }
                         })
 
-                        createSetting('hide-all-cursors', 'Hide all cursors', gHideAllCursors, true, html, () => {
-                            gHideAllCursors = !gHideAllCursors
-                            localStorage.hideAllCursors = gHideAllCursors
-                            if (gHideAllCursors) {
+                        createSetting('hide-all-cursors', 'Hide all cursors', storage.gHideAllCursors, true, html, () => {
+                            storage.gHideAllCursors = !storage.gHideAllCursors
+                            localStorage.hideAllCursors = storage.gHideAllCursors
+                            if (storage.gHideAllCursors) {
                                 $('#cursors').hide()
                             } else {
                                 $('#cursors').show()
                             }
                         })
 
-                        createSetting('hide-bot-users', 'Hide all bots', gHideBotUsers, true, html, () => {
-                            gHideBotUsers = !gHideBotUsers
-                            localStorage.hideBotUsers = gHideBotUsers
+                        createSetting('hide-bot-users', 'Hide all bots', storage.gHideBotUsers, true, html, () => {
+                            storage.gHideBotUsers = !storage.gHideBotUsers
+                            localStorage.hideBotUsers = storage.gHideBotUsers
                         })
 
                         if (new Date().getMonth() === 11) {
-                            createSetting('snowflakes', 'Enable snowflakes', gSnowflakes, true, html, () => {
-                                gSnowflakes = !gSnowflakes
-                                localStorage.snowflakes = gSnowflakes
+                            createSetting('snowflakes', 'Enable snowflakes', storage.gSnowflakes, true, html, () => {
+                                storage.gSnowflakes = !storage.gSnowflakes
+                                localStorage.snowflakes = storage.gSnowflakes
                                 shouldShowSnowflakes()
                             })
                         }
@@ -4805,18 +4931,18 @@ $(function() {
     //confetti, to be removed after the 10th anniversary
     //source: https://www.cssscript.com/confetti-falling-animation/
 
-    var maxParticleCount = 500 //set max confetti count
-    var particleSpeed = 2 //set the particle animation speed
-    var startConfetti //call to start confetti animation
-    var stopConfetti //call to stop adding confetti
-    var toggleConfetti //call to start or stop the confetti animation depending on whether it's already running
-    var removeConfetti //call to stop the confetti animation and remove all confetti immediately
+    let maxParticleCount = 500 //set max confetti count
+    let particleSpeed = 2 //set the particle animation speed
+    let startConfetti //call to start confetti animation
+    let stopConfetti //call to stop adding confetti
+    let toggleConfetti //call to start or stop the confetti animation depending on whether it's already running
+    let removeConfetti //call to stop the confetti animation and remove all confetti immediately
     ;(function () {
         startConfetti = startConfettiInner
         stopConfetti = stopConfettiInner
         toggleConfetti = toggleConfettiInner
         removeConfetti = removeConfettiInner
-        var colors = [
+        let colors = [
             'DodgerBlue',
             'OliveDrab',
             'Gold',
@@ -4830,10 +4956,10 @@ $(function() {
             'Chocolate',
             'Crimson'
         ]
-        var streamingConfetti = false
-        var animationTimer = null
-        var particles = []
-        var waveAngle = 0
+        let streamingConfetti = false
+        let animationTimer = null
+        let particles = []
+        let waveAngle = 0
 
         function resetParticle(particle, width, height) {
             particle.color = colors[(Math.random() * colors.length) | 0]
@@ -4972,34 +5098,6 @@ $(function() {
             globalThis.i18nextify.forceRerender()
             modal.close()
         })
-    })();
-    (() => {
-        if (!gSnowflakes) 
-            return
-        (async () => {
-            let snow = document.createElement('div')
-            snow.id = 'tsparticles'
-            $(document.body).prepend(snow)
-            await globalThis.loadSnowPreset(globalThis.tsParticles);
-            await globalThis.tsParticles.load({
-                id: 'tsparticles',
-                options: {
-                    preset: 'snow',
-                    particles: {
-                        size: {
-                            value: { min: 0, max: 3 }
-                        },
-                        number: {
-                            value: 250
-                        }
-                    },
-                    background: {
-                        color: 'transparent'
-                    }
-                }
-            })
-            console.log('snow particles are working')
-        })();
     })();
     gClient.start()
     Object.assign(globalThis, {

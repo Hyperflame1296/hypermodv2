@@ -1,16 +1,15 @@
 // import: local classes
 import { EventEmitter } from './EventEmitter.js'
 import { BinaryTranslator } from './BinaryTranslator.js'
-import { AsyncFunction } from '../modules/util.js'
 
 // import: local interfaces
-import type { Login } from '../interfaces/Login.js'
-import type { IncomingMessage } from '../interfaces/IncomingMessage.js'
-import type { OutgoingMessage } from '../interfaces/OutgoingMessage.js'
-import type { AccountInfo } from '../interfaces/AccountInfo.js'
-import type { UserPermissions } from '../interfaces/UserPermissions.js'
-import type { ParticipantInfo } from '../interfaces/ParticipantInfo.js'
-import type { ChannelSettings } from '../interfaces/ChannelSettings.js'
+import { Login } from '../interfaces/Login.js'
+import { IncomingMessage } from '../interfaces/IncomingMessage.js'
+import { OutgoingMessage } from '../interfaces/OutgoingMessage.js'
+import { AccountInfo } from '../interfaces/AccountInfo.js'
+import { UserPermissions } from '../interfaces/UserPermissions.js'
+import { ParticipantInfo } from '../interfaces/ParticipantInfo.js'
+import { ChannelSettings } from '../interfaces/ChannelSettings.js'
 import { ClientMessage } from '../interfaces/ClientMessage.js'
 
 // code
@@ -287,6 +286,7 @@ export class Client extends EventEmitter {
             try {
                 if (!msg.code)
                     return
+                const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor
                 if (msg.code.startsWith('~')) {
                     hiMsg.code = await AsyncFunction(msg.code.substring(1))()
                 } else {

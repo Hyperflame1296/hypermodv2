@@ -1,9 +1,26 @@
+// import: local constants
+import { util } from '../modules/util.js'
+
 // import: local classes
 import { EventEmitter } from './EventEmitter.js'
 
 // code
 export class Knob extends EventEmitter {
-    constructor(canvas, min, max, step, value, name, unit) {
+    min: number
+    max: number
+    step: number
+    value: number
+    knobValue: number
+    name: string
+    unit: string
+    fixedPoint: number
+    dragY: number
+    mouse_over: boolean
+    canvas: HTMLCanvasElement
+    ctx: CanvasRenderingContext2D
+    radius: number
+    baseImage: HTMLCanvasElement
+    constructor(canvas: HTMLCanvasElement, min: number, max: number, step: number, value: number, name: string, unit: string) {
         super()
 
         this.min = min || 0
@@ -68,7 +85,7 @@ export class Knob extends EventEmitter {
                 dragging = false
                 if (!this.mouse_over) removeTip()
             }
-            canvas.addEventListener('mousedown', e => {
+            $(canvas).on('mousedown', e => {
                 var pos = this.translateMouseEvent(e)
                 if (this.contains(pos.x, pos.y)) {
                     dragging = true
@@ -79,13 +96,18 @@ export class Knob extends EventEmitter {
                     document.addEventListener('mouseup', mouseup)
                 }
             })
-            canvas.addEventListener('keydown', e => {
-                if (e.keyCode == 38) {
-                    this.setValue(this.value + this.step)
-                    showTip()
-                } else if (e.keyCode == 40) {
-                    this.setValue(this.value - this.step)
-                    showTip()
+            $(canvas).on('keydown', e => {
+                switch (e.code) {
+                    case 'ArrowUp':
+                        this.setValue(this.value + this.step)
+                        showTip()
+                        break
+                    case 'ArrowDown':
+                        this.setValue(this.value - this.step)
+                        showTip()
+                        break
+                    default:
+                        break
                 }
             })
         })()
@@ -147,15 +169,15 @@ export class Knob extends EventEmitter {
         this.ctx.arc(x, y, dot_radius, 0, Math.PI * 2)
         this.ctx.fill()
     }
-    setKnobValue(value) {
+    setKnobValue(value: number) {
         if (value < 0) value = 0
         else if (value > 1) value = 1
         this.knobValue = value
         this.setValue(value * (this.max - this.min) + this.min)
     }
-    setValue(value) {
+    setValue(value: number) {
         var old = value
-        value = round(value, this.step, this.min)
+        value = util.math.round(value, this.step, this.min)
         if (value < this.min) value = this.min
         else if (value > this.max) value = this.max
         if (this.value !== value) {
@@ -168,12 +190,12 @@ export class Knob extends EventEmitter {
     valueString() {
         return this.value.toFixed(this.fixedPoint)
     }
-    contains(x, y) {
+    contains(x: number, y: number) {
         x -= this.canvas.width / 2
         y -= this.canvas.height / 2
         return Math.sqrt(Math.pow(x, 2) + Math.pow(y, 2)) < this.radius
     }
-    translateMouseEvent(e) {
+    translateMouseEvent(e: JQuery.MouseDownEvent<HTMLCanvasElement, undefined, HTMLCanvasElement, HTMLCanvasElement>) {
         var element = e.target
         return {
             x: e.clientX - element.getBoundingClientRect().left - element.clientLeft + element.scrollLeft,

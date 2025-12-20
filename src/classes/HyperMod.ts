@@ -26,6 +26,8 @@ export class HyperMod {
         autoCrown: true,
         showChatCommands: true,
         messageBlur: true,
+        hyperModAudioEngine: false,
+        enableRelease: false,
         // MIDI I/O section
         midiOutputVelocityThreshold: 0,
         // Player section
