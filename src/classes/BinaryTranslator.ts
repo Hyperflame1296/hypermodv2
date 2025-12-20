@@ -2,10 +2,24 @@
 import { BinaryReader } from './BinaryReader.js'
 import { BinaryWriter } from './BinaryWriter.js'
 
+// import: local interfaces
+import { ParticipantInfo } from '../interfaces/ParticipantInfo.js'
+import { ChannelSettings } from '../interfaces/ChannelSettings.js'
+import { Note } from '../interfaces/Note.js'
+import { ChannelInfo } from '../interfaces/ChannelInfo.js'
+import { Crown } from '../interfaces/Crown.js'
+
 // code
 export class BinaryTranslator {
     #noteNames = ['a-1', 'as-1', 'b-1', 'c0', 'cs0', 'd0', 'ds0', 'e0', 'f0', 'fs0', 'g0', 'gs0', 'a0', 'as0', 'b0', 'c1', 'cs1', 'd1', 'ds1', 'e1', 'f1', 'fs1', 'g1', 'gs1', 'a1', 'as1', 'b1', 'c2', 'cs2', 'd2', 'ds2', 'e2', 'f2', 'fs2', 'g2', 'gs2', 'a2', 'as2', 'b2', 'c3', 'cs3', 'd3', 'ds3', 'e3', 'f3', 'fs3', 'g3', 'gs3', 'a3', 'as3', 'b3', 'c4', 'cs4', 'd4', 'ds4', 'e4', 'f4', 'fs4', 'g4', 'gs4', 'a4', 'as4', 'b4', 'c5', 'cs5', 'd5', 'ds5', 'e5', 'f5', 'fs5', 'g5', 'gs5', 'a5', 'as5', 'b5', 'c6', 'cs6', 'd6', 'ds6', 'e6', 'f6', 'fs6', 'g6', 'gs6', 'a6', 'as6', 'b6', 'c7']
     #noteIds = new Map(this.#noteNames.map((s, i) => [s, i + 21]))
+    user: ParticipantInfo
+    channelName: string
+    channelSettings: ChannelSettings
+    channelCrown: any
+    ppl: Map<string, ParticipantInfo>
+    participantId: string
+    recentSentNotes: any
     constructor() {
         this.reset()
     }
@@ -39,13 +53,13 @@ export class BinaryTranslator {
                 case 0x01: {
                     let channelName = reader.readString()
                     this.channelName = channelName
-                    let message = {
+                    let message: any = {
                         m: 'ch',
                         ch: {
                             _id: channelName
                         }
                     }
-                    let settings = {}
+                    let settings: ChannelSettings = {}
                     settings.lobby = reader.readBitflag(0)
                     settings.visible = reader.readBitflag(1)
                     settings.chat = reader.readBitflag(2)
@@ -218,9 +232,9 @@ export class BinaryTranslator {
                     }
                     let count = reader.readVarlong()
                     for (let i = count; i--; ) {
-                        let channel = {}
+                        let channel: ChannelInfo = {}
 
-                        let settings = {}
+                        let settings: ChannelSettings = {}
                         settings.lobby = reader.readBitflag(0)
                         settings.visible = reader.readBitflag(1)
                         settings.chat = reader.readBitflag(2)
@@ -233,7 +247,7 @@ export class BinaryTranslator {
                         channel.settings = settings
 
                         if (!settings.lobby) {
-                            let crown = {}
+                            let crown: Crown = {}
                             crown.userId = reader.readUserId()
                             let crownDropped = reader.readBitflag(0)
                             reader.index++
@@ -356,7 +370,7 @@ export class BinaryTranslator {
                     let count = reader.readVarlong()
                     let notes = []
                     for (let i = count; i--; ) {
-                        let note = {
+                        let note: Note = {
                             n: this.#noteNames[reader.readUInt8() - 21]
                         }
                         let velocity = reader.readUInt8()
@@ -385,7 +399,7 @@ export class BinaryTranslator {
                     break
                 }
                 case 0x09: {
-                    let settings = {}
+                    let settings: ChannelSettings = {}
                     settings.visible = reader.readBitflag(1)
                     settings.chat = reader.readBitflag(2)
                     settings.crownsolo = reader.readBitflag(3)
@@ -467,7 +481,7 @@ export class BinaryTranslator {
                 case 'ch': {
                     writer.writeUInt8(0x01)
                     writer.writeString(messageObj._id)
-                    let settings = {
+                    let settings: ChannelSettings = {
                         visible: true,
                         color: '#3b5054',
                         chat: true,

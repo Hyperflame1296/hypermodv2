@@ -9,6 +9,7 @@ import { AudioEngine } from './classes/AudioEngine.js'
 import { Renderer } from './classes/Renderer.js'
 import { Rect } from './classes/Rect.js'
 import { KeyboardNote } from './classes/KeyboardNote.js'
+import { Scheduler } from './classes/Scheduler.js'
 
 // import: local interfaces
 import { AudioVoice } from './interfaces/AudioVoice.js'
@@ -16,13 +17,13 @@ import { SoundPack } from './interfaces/SoundPack.js'
 import { Blip } from './interfaces/Blip.js'
 import { ParticipantInfo } from './interfaces/ParticipantInfo.js'
 import { IncomingMessage } from './interfaces/IncomingMessage.js'
+import { ChannelSettings } from './interfaces/ChannelSettings.js'
 
 // import: local constants
 import { MIDI_KEY_MAP } from './constants.js'
 
 // import: local methods
 import { parseMarkdown, parseContent, parseUrl } from './modules/util.js'
-import { ChannelSettings } from './interfaces/ChannelSettings.js'
 
 // code
 let translation = globalThis.i18nextify!.init({
@@ -127,58 +128,39 @@ $(function() {
     }
 
     // scheduler
-    let scheduler = {
-        initialized: false,
-        tasks: [],
-        timeouts: [],
-        init() {
-            if (this.initialized)
-                return console.warn('MPP.scheduler.init() called more than once!')
-            this.initialized = true
-            let loop = () => {
-                this.update()
-                requestAnimationFrame(loop)
+    let gScheduler = new Scheduler()
+    gScheduler.init()
+
+    // modal system
+    let modal = {
+        current: undefined,
+        open(selector?: string, focus?: string) {
+            if (chat) chat.blur()
+            releaseKeyboard()
+            $(document).on('keydown', this.handleEsc)
+            $('#modal #modals > *').hide()
+            $('#modal').fadeIn(250)
+            $(selector).show()
+            gScheduler.setTimeout(function () {
+                $(selector).find(focus).trigger('focus')
+            }, 100)
+            this.current = selector
+        },
+        close() {
+            $(document).off('keydown', this.handleEsc)
+            $('#modal').fadeOut(100)
+            $('#modal #modals > *').hide()
+            captureKeyboard()
+            this.current = null
+        },
+        handleEsc(evt) {
+            if (evt.keyCode == 27) {
+                this.close()
+                if (!gNoPreventDefault) evt.preventDefault()
+                evt.stopPropagation()
             }
-            loop()
-        },
-        update() {
-            if (!this.initialized)
-                return
-            for (let i = this.timeouts.length - 1; i >= 0; i--) {
-                let timeout = this.timeouts[i]
-                if (typeof timeout === 'undefined')
-                    continue
-                if (performance.now() < timeout.time)
-                    continue
-                timeout.cb()
-                this.timeouts.splice(i, 1)
-            }
-            for (let task of this.tasks) {
-                task()
-            }
-        },
-        post(cb: () => void) {
-            if (!this.initialized)
-                return
-            this.tasks.push(cb)
-        },
-        remove(cb: () => void) {
-            if (!this.initialized)
-                return
-            this.tasks.splice(this.tasks.indexOf(cb), 1)
-        },
-        setTimeout(cb: () => void, delay: number) {
-            if (!this.initialized)
-                return
-            if (delay <= 0)
-                return cb()
-            this.timeouts.push({
-                cb,
-                time: performance.now() + delay
-            })
         }
     }
-    scheduler.init()
 
     // AudioEngine classes
     class AudioEngineWeb extends AudioEngine {
@@ -294,7 +276,7 @@ $(function() {
             if (delay <= 0) this.actualPlay(id, vol, time, part_id)
             else {
                 if ((gHyperMod.lsSettings.removeWorkerTimer ?? true) || !this.worker)
-                    scheduler.setTimeout(() => {
+                    gScheduler.setTimeout(() => {
                         this.actualPlay(id, vol, time, part_id)
                     }, delay)
                 else
@@ -341,7 +323,7 @@ $(function() {
             if (delay <= 0) this.actualStop(id, time, part_id)
             else {
                 if ((gHyperMod.lsSettings.removeWorkerTimer ?? true) || !this.worker)
-                    scheduler.setTimeout(() => {
+                    gScheduler.setTimeout(() => {
                         this.actualStop(id, time, part_id)
                     }, delay)
                 else
@@ -1083,7 +1065,7 @@ $(function() {
                     for (let i = 0; i < midiPerFrame && midiBuf.count > 0; i++) {
                         const ev = midiBuf.buf[midiBuf.head];
                         gMidi.noteOn(ev.note, ev.vol, ev.delay, ev.participantId);
-                        if (gHyperMod.lsSettings.enableNoteVisualizer ?? false) scheduler.setTimeout(() => gHyperMod.visualizer.noteOn(MIDI_KEY_MAP[note] ?? 0, participant), delay_ms)
+                        if (gHyperMod.lsSettings.enableNoteVisualizer ?? false) gScheduler.setTimeout(() => gHyperMod.visualizer.noteOn(MIDI_KEY_MAP[note] ?? 0, participant), delay_ms)
                         midiBuf.head = (midiBuf.head + 1) % midiBuf.buf.length;
                         midiBuf.count--;
                     }
@@ -1107,7 +1089,7 @@ $(function() {
                             const div = ev.participant.nameDiv;
                             div.__isBouncing = true;
                             div.classList.add("play");
-                            scheduler.setTimeout(() => { div.classList.remove("play"); div.__isBouncing = false; }, 30);
+                            gScheduler.setTimeout(() => { div.classList.remove("play"); div.__isBouncing = false; }, 30);
                         }
 
                         blipBuf.head = (blipBuf.head + 1) % blipBuf.buf.length;
@@ -1128,19 +1110,19 @@ $(function() {
             var key = this.keys[note]
             if (key.loaded && this.audio.volume > 0 && !(gHyperMod.lsSettings.disableAudioEngine ?? false)) this.audio.play(key.note, vol, delay_ms, participant.id)
             gMidi.noteOn(key.note, vol * 100, delay_ms, participant.id)
-            scheduler.setTimeout(() => {
+            gScheduler.setTimeout(() => {
                 // spawn a blip
                 let limit = gHyperMod.lsSettings.blipLimit ?? 8
                 key.timePlayed = Date.now()
                 if ((gHyperMod.lsSettings.enableBlipLimit ?? true) && key.blips.length >= limit)
                     key.blips.shift()
                 key.blips.push({ time: key.timePlayed, color: participant.color })
-                if (gHyperMod.lsSettings.enableNoteVisualizer ?? false) scheduler.setTimeout(() => gHyperMod.visualizer.noteOn(MIDI_KEY_MAP[note] ?? 0, participant), delay_ms)
+                if (gHyperMod.lsSettings.enableNoteVisualizer ?? false) gScheduler.setTimeout(() => gHyperMod.visualizer.noteOn(MIDI_KEY_MAP[note] ?? 0, participant), delay_ms)
                 // bounce player's name, if enabled
                 if (!(gHyperMod.lsSettings.removeNameBouncing ?? true)) {
                     var jq_namediv = $(participant.nameDiv)
                     jq_namediv.addClass('play')
-                    scheduler.setTimeout(function () {
+                    gScheduler.setTimeout(function () {
                         jq_namediv.removeClass('play')
                     }, 30)
                 }
@@ -1151,7 +1133,7 @@ $(function() {
             var key = this.keys[note]
             if (key.loaded && this.audio.volume > 0 && !(gHyperMod.lsSettings.disableAudioEngine ?? false)) this.audio.stop(key.note, delay_ms, participant.id)
             gMidi.noteOff(key.note, delay_ms, participant.id)
-            if (gHyperMod.lsSettings.enableNoteVisualizer ?? false) scheduler.setTimeout(() => gHyperMod.visualizer.noteOff(MIDI_KEY_MAP[note] ?? 0), delay_ms)
+            if (gHyperMod.lsSettings.enableNoteVisualizer ?? false) gScheduler.setTimeout(() => gHyperMod.visualizer.noteOff(MIDI_KEY_MAP[note] ?? 0), delay_ms)
         }
     }
     var gPiano = new Piano($('#piano')[0]).init()
@@ -1352,14 +1334,14 @@ $(function() {
             receivedHi = true
             if (!msg.motd) msg.motd = 'This site makes a lot of sound! You may want to adjust the volume before continuing.'
             document.getElementById('motd-text').innerHTML = msg.motd
-            openModal('#motd')
-            $(document).off('keydown', modalHandleEsc)
+            modal.open('#motd')
+            $(document).off('keydown', modal.handleEsc)
             var user_interact = function (evt) {
                 if (
                     (evt.path || (evt.composedPath && evt.composedPath())).includes(document.getElementById('motd')) ||
                     evt.target === document.getElementById('motd')
                 ) {
-                    closeModal()
+                    modal.close()
                 }
                 document.removeEventListener('click', user_interact)
                 gPiano.audio.resume()
@@ -1725,8 +1707,8 @@ $(function() {
         $('#room-settings-btn').on('click', () => {
             if (gClient.channel && (gClient.isOwner() || gClient.permissions.chsetAnywhere)) {
                 var settings = gClient.channel.settings
-                openModal('#room-settings')
-                scheduler.setTimeout(function () {
+                modal.open('#room-settings')
+                gScheduler.setTimeout(function () {
                     $('#room-settings .checkbox[name=visible]').prop('checked', settings.visible)
                     $('#room-settings .checkbox[name=chat]').prop('checked', settings.chat)
                     $('#room-settings .checkbox[name=crownsolo]').prop('checked', settings.crownsolo)
@@ -1752,10 +1734,10 @@ $(function() {
                 limit: $('#room-settings input[name=limit]').val()
             }
             gClient.setChannelSettings(settings)
-            closeModal()
+            modal.close()
         })
         $('#room-settings .drop-crown').on('click', () => {
-            closeModal()
+            modal.close()
             if (confirm('This will drop the crown...!')) gClient.sendArray([{ m: 'chown' }])
         })
     })()
@@ -2100,7 +2082,7 @@ $(function() {
 
             if (++gKeyboardSeq == 3) {
                 gKnowsYouCanUseKeyboard = true
-                if (globalThis.gKnowsYouCanUseKeyboardTimeout) clearTimeout(globalThis.gKnowsYouCanUseKeyboardTimeout)
+                if (globalThis.gKnowsYouCanUseKeyboardTimeout) gScheduler.clearTimeout(globalThis.gKnowsYouCanUseKeyboardTimeout)
                 if (localStorage) localStorage.knowsYouCanUseKeyboard = true
                 if (globalThis.gKnowsYouCanUseKeyboardNotification) globalThis.gKnowsYouCanUseKeyboardNotification.close()
             }
@@ -2237,7 +2219,7 @@ $(function() {
         var last_rat = 0
         var nqjq = $('#quota .value')
         let nq = new NoteQuota()
-        scheduler.post(() => {
+        gScheduler.post(() => {
             // update UI
             var rat = (nq.points / nq.max) * 100
             nqjq.css('width', rat.toFixed(0) + '%')
@@ -2297,8 +2279,8 @@ $(function() {
                 target_jq.addClass('play')
                 var id = target.participantId
                 if (id == gClient.participantId) {
-                    openModal('#rename', 'input[name=name]')
-                    scheduler.setTimeout(function () {
+                    modal.open('#rename', 'input[name=name]')
+                    gScheduler.setTimeout(function () {
                         $('#rename input[name=name]').val(gClient.ppl[gClient.participantId].name)
                         $('#rename input[name=color]').val(gClient.ppl[gClient.participantId].color)
                     }, 100)
@@ -2359,7 +2341,7 @@ $(function() {
                 .on('mousedown touchstart', (evt) => {
                     navigator.clipboard.writeText(part._id)
                     evt.target.innerText = 'Copied!'
-                    scheduler.setTimeout(() => {
+                    gScheduler.setTimeout(() => {
                         evt.target.innerText = part._id
                     }, 2500)
                 })
@@ -2473,7 +2455,7 @@ $(function() {
                 .appendTo(menu)
                 .on('mousedown touchstart', function (evt) {
                     ($('#chat-input')[0] as HTMLInputElement).value += '@' + part.id + ' '
-                    scheduler.setTimeout(() => {
+                    gScheduler.setTimeout(() => {
                         $('#chat-input').trigger('focus')
                     }, 1)
                 })
@@ -2501,8 +2483,8 @@ $(function() {
                 $(`<div class="menu-item site-ban">${globalThis.i18nextify.i18next.t('Site Ban')}</div>`)
                     .appendTo(menu)
                     .on('mousedown touchstart', function (evt) {
-                        openModal('#siteban')
-                        scheduler.setTimeout(function () {
+                        modal.open('#siteban')
+                        gScheduler.setTimeout(function () {
                             $('#siteban input[name=id]').val(part._id)
                             $('#siteban input[name=reasonText]').val('Discrimination against others')
                             $('#siteban input[name=reasonText]').attr('disabled', 'true')
@@ -2600,7 +2582,7 @@ $(function() {
             })
 
             if (this.duration > 0) {
-                scheduler.setTimeout(() => {
+                gScheduler.setTimeout(() => {
                     self.close()
                 }, this.duration)
             }
@@ -2636,7 +2618,7 @@ $(function() {
     var gKnowsYouCanUseKeyboard = false
     if (localStorage && localStorage.knowsYouCanUseKeyboard) gKnowsYouCanUseKeyboard = true
     if (!gKnowsYouCanUseKeyboard) {
-        globalThis.gKnowsYouCanUseKeyboardTimeout = scheduler.setTimeout(function () {
+        globalThis.gKnowsYouCanUseKeyboardTimeout = gScheduler.setTimeout(function () {
             globalThis.gKnowsYouCanUseKeyboardNotification = new SiteNotification({
                 title: globalThis.i18nextify.i18next.t('Did you know!?!'),
                 text: globalThis.i18nextify.i18next.t('You can play the piano with your keyboard, too.  Try it!'),
@@ -2733,7 +2715,7 @@ $(function() {
         }
         // clicks on "New Room..."
         else if ($(evt.target).hasClass('new')) {
-            openModal('#new-room', 'input[name=name]')
+            modal.open('#new-room', 'input[name=name]')
         }
         // all other clicks
         var doc_click = function (evt) {
@@ -2749,14 +2731,14 @@ $(function() {
     })
     $('#new-room-btn').on('click', function (evt) {
         evt.stopPropagation()
-        openModal('#new-room', 'input[name=name]')
+        modal.open('#new-room', 'input[name=name]')
     })
 
     $('#play-alone-btn').on('click', function (evt) {
         evt.stopPropagation()
         var room_name = 'Room' + Math.floor(Math.random() * 1000000000000)
         changeRoom(room_name, 'right', { visible: false })
-        scheduler.setTimeout(function () {
+        gScheduler.setTimeout(function () {
             new SiteNotification({
                 id: 'share',
                 title: globalThis.i18nextify.i18next.t('Playing alone'),
@@ -2777,7 +2759,7 @@ $(function() {
     //Account button
     $('#account-btn').on('click', function (evt) {
         evt.stopPropagation()
-        openModal('#account')
+        modal.open('#account')
         if (gClient.accountInfo) {
             $('#account #account-info').show()
             if (gClient.accountInfo.type === 'discord') {
@@ -2788,42 +2770,10 @@ $(function() {
             $('#account #account-info').hide()
         }
     })
-
-    var gModal
-
-    function modalHandleEsc(evt) {
-        if (evt.keyCode == 27) {
-            closeModal()
-            if (!gNoPreventDefault) evt.preventDefault()
-            evt.stopPropagation()
-        }
-    }
-
-    function openModal(selector?: string, focus?: string) {
-        if (chat) chat.blur()
-        releaseKeyboard()
-        $(document).on('keydown', modalHandleEsc)
-        $('#modal #modals > *').hide()
-        $('#modal').fadeIn(250)
-        $(selector).show()
-        scheduler.setTimeout(function () {
-            $(selector).find(focus).trigger('focus')
-        }, 100)
-        gModal = selector
-    }
-
-    function closeModal() {
-        $(document).off('keydown', modalHandleEsc)
-        $('#modal').fadeOut(100)
-        $('#modal #modals > *').hide()
-        captureKeyboard()
-        gModal = null
-    }
-
     var modal_bg = $('#modal .bg')[0]
     $(modal_bg).on('click', function (evt) {
         if (evt.target != modal_bg) return
-        closeModal()
+        modal.close()
     })
     ;(function () {
         function submit() {
@@ -2833,9 +2783,9 @@ $(function() {
                 chat: true
             }
             $('#new-room .text[name=name]').val('')
-            closeModal()
+            modal.close()
             changeRoom(name, 'right', settings)
-            scheduler.setTimeout(function () {
+            gScheduler.setTimeout(function () {
                 new SiteNotification({
                     id: 'share',
                     title: globalThis.i18nextify.i18next.t('Created a Room'),
@@ -2857,7 +2807,7 @@ $(function() {
             if (e.keyCode == 13) {
                 submit()
             } else if (e.keyCode == 27) {
-                closeModal()
+                modal.close()
             } else {
                 return
             }
@@ -2896,7 +2846,7 @@ $(function() {
         $('#piano')
             .addClass('ease-out')
             .addClass('slide-' + opposite)
-        scheduler.setTimeout(
+        gScheduler.setTimeout(
             function () {
                 $('#piano')
                     .removeClass('ease-out')
@@ -2905,7 +2855,7 @@ $(function() {
             },
             (t += d)
         )
-        scheduler.setTimeout(
+        gScheduler.setTimeout(
             function () {
                 $('#piano')
                     .addClass('ease-in')
@@ -2913,7 +2863,7 @@ $(function() {
             },
             (t += d)
         )
-        scheduler.setTimeout(
+        gScheduler.setTimeout(
             function () {
                 $('#piano').removeClass('ease-in')
             },
@@ -2944,7 +2894,7 @@ $(function() {
                 color: $('#rename input[name=color]').val() as string
             }
             //$("#rename .text[name=name]").val("");
-            closeModal()
+            modal.close()
             gClient.sendArray([{ m: 'userset', set }])
         }
         $('#rename .submit').on('click', () => {
@@ -2954,7 +2904,7 @@ $(function() {
             if (evt.keyCode == 13) {
                 submit()
             } else if (evt.keyCode == 27) {
-                closeModal()
+                modal.close()
             } else {
                 return
             }
@@ -3036,7 +2986,7 @@ $(function() {
                 msg.note = note
             }
 
-            closeModal()
+            modal.close()
             gClient.sendArray([msg])
         }
         $('#siteban .submit').on('click', () => {
@@ -3065,7 +3015,7 @@ $(function() {
             if (evt.keyCode == 13) {
                 submit()
             } else if (evt.keyCode == 27) {
-                closeModal()
+                modal.close()
             } else {
                 return
             }
@@ -3082,7 +3032,7 @@ $(function() {
             delete gClient.accountInfo
             gClient.stop()
             gClient.start()
-            closeModal()
+            modal.close()
         }
         $('#account .logout-btn').on('click', function (evt) {
             logout()
@@ -3221,7 +3171,7 @@ $(function() {
                     } else if (e.code === 'Enter') {
                         $('#chat-input').trigger('focus')
                     }
-                } else if (!gModal && (e.code == 'Escape' || e.code == 'Enter')) {
+                } else if (!modal.current && (e.code == 'Escape' || e.code == 'Enter')) {
                     $('#chat-input').trigger('focus')
                 }
             })
@@ -3231,7 +3181,7 @@ $(function() {
                 if ((e.target as HTMLInputElement).value.length == 0) {
                     stopTyping()
                     if (gTypingTimeout) {
-                        clearTimeout(gTypingTimeout)
+                        gScheduler.clearTimeout(gTypingTimeout)
                         gTypingTimeout = undefined
                     }
                     return updateTypingStatus()
@@ -3240,10 +3190,10 @@ $(function() {
                     startTyping()
                     updateTypingStatus()
                 } else {
-                    clearTimeout(gTypingTimeout)
+                    gScheduler.clearTimeout(gTypingTimeout)
                     gTypingTimeout = undefined
                 }
-                gTypingTimeout = scheduler.setTimeout(() => {
+                gTypingTimeout = gScheduler.setTimeout(() => {
                     stopTyping()
                     updateTypingStatus()
                     gTypingTimeout = undefined
@@ -3277,7 +3227,7 @@ $(function() {
                                 chat.cancelReply()
                             }
                             if (gHyperMod.lsSettings.messageBlur ?? true)
-                                scheduler.setTimeout(function () {
+                                gScheduler.setTimeout(function () {
                                     chat.blur()
                                 }, 100)
                         } else {
@@ -3316,7 +3266,7 @@ $(function() {
                             stopTyping()
                             updateTypingStatus()
                             if (gHyperMod.lsSettings.messageBlur ?? true)
-                                scheduler.setTimeout(function () {
+                                gScheduler.setTimeout(function () {
                                     chat.blur()
                                 }, 100)
                         }
@@ -3430,7 +3380,7 @@ $(function() {
                             message
                         }
                     ])
-                    scheduler.setTimeout(() => {
+                    gScheduler.setTimeout(() => {
                         chat.cancelReply()
                     }, 100)
                 } else {
@@ -3442,7 +3392,7 @@ $(function() {
                             message
                         }
                     ])
-                    scheduler.setTimeout(() => {
+                    gScheduler.setTimeout(() => {
                         this.cancelReply()
                     }, 100)
                 }
@@ -3531,7 +3481,7 @@ $(function() {
                                 repliedMsg?.m === 'dm' ? repliedMsg.sender?.color : repliedMsg.p?.color
                             }20`
                         })
-                        scheduler.setTimeout(() => {
+                        gScheduler.setTimeout(() => {
                             $(`#msg-${repliedMsg?.id}`).css({
                                 'background-color': 'unset',
                                 border: '1px solid #00000000'
@@ -3625,7 +3575,7 @@ $(function() {
                 if (msg.m === 'dm') {
                     navigator.clipboard.writeText(msg.sender._id === gClient.user._id ? msg.recipient._id : msg.sender._id)
                     li.find('.id').text('Copied')
-                    scheduler.setTimeout(() => {
+                    gScheduler.setTimeout(() => {
                         li.find('.id').text(
                             (msg.sender._id === gClient.user._id ? msg.recipient._id : msg.sender._id).substring(0, 6)
                         )
@@ -3633,7 +3583,7 @@ $(function() {
                 } else {
                     navigator.clipboard.writeText(msg.p._id)
                     li.find('.id').text('Copied')
-                    scheduler.setTimeout(() => {
+                    gScheduler.setTimeout(() => {
                         li.find('.id').text(msg.p._id.substring(0, 6))
                     }, 2500)
                 }
@@ -3643,7 +3593,7 @@ $(function() {
                     return
                 navigator.clipboard.writeText(msg.recipient._id)
                 li.find('.id2').text('Copied')
-                scheduler.setTimeout(() => {
+                gScheduler.setTimeout(() => {
                     li.find('.id2').text(msg.recipient._id.substring(0, 6))
                 }, 2500)
             })
@@ -3651,13 +3601,13 @@ $(function() {
             li.find('.reply').on('click', () => {
                 if (msg.m !== 'dm') {
                     chat.startReply(msg.p, msg.id)
-                    scheduler.setTimeout(() => {
+                    gScheduler.setTimeout(() => {
                         $(`#msg-${msg.id}`).css({
                             border: `1px solid ${msg?.m === 'a' ? msg.p?.color : (msg as any).sender?.color}80`,
                             'background-color': `${msg?.m === 'a' ? msg.p?.color : (msg as any).sender?.color}20`
                         })
                     }, 100)
-                    scheduler.setTimeout(() => {
+                    gScheduler.setTimeout(() => {
                         $('#chat-input').trigger('focus')
                     }, 100)
                 } else {
@@ -3665,13 +3615,13 @@ $(function() {
                         let replyingTo = msg.sender._id === gClient.user._id ? msg.recipient : msg.sender
                         if (gClient.ppl[replyingTo._id]) {
                             chat.startDmReply(replyingTo, msg.id)
-                            scheduler.setTimeout(() => {
+                            gScheduler.setTimeout(() => {
                                 $(`#msg-${msg.id}`).css({
                                     border: `1px solid ${msg?.m === 'dm' ? msg.sender?.color : (msg as any).p?.color}80`,
                                     'background-color': `${msg?.m === 'dm' ? msg.sender?.color : (msg as any).p?.color}20`
                                 })
                             }, 100)
-                            scheduler.setTimeout(() => {
+                            gScheduler.setTimeout(() => {
                                 $('#chat-input').trigger('focus')
                             }, 100)
                         } else {
@@ -3903,7 +3853,7 @@ $(function() {
             if (noteNum === undefined) 
                 return false
             noteNum = noteNum + 9 - MIDI_TRANSPOSE
-            scheduler.setTimeout(() => {
+            gScheduler.setTimeout(() => {
                 for (let output of this.outputs) {
                     if (!output.enabled)
                         continue
@@ -3924,7 +3874,7 @@ $(function() {
             if (noteNum === undefined) 
                 return false
             noteNum = noteNum + 9 - MIDI_TRANSPOSE
-            scheduler.setTimeout(() => {
+            gScheduler.setTimeout(() => {
                 for (let output of this.outputs) {
                     if (!output.enabled)
                         continue
@@ -4111,7 +4061,8 @@ $(function() {
         noteQuota: gNoteQuota,
         normalNoteQuotaParams,
         soundSelector: gSoundSelector,
-        scheduler
+        scheduler: gScheduler,
+        modal
     }
 
     // synth
@@ -4593,12 +4544,12 @@ $(function() {
 
             button.addEventListener('click', (evt) => {
                 evt.stopPropagation()
-                openModal('#client-settings')
+                modal.open('#client-settings')
             })
 
             okButton.addEventListener('click', (evt) => {
                 evt.stopPropagation()
-                closeModal()
+                modal.close()
             })
 
             function createSetting(id, labelText, isChecked, addBr, html, onclickFunc) {
@@ -5014,13 +4965,13 @@ $(function() {
         })
 
         document.getElementById('lang-btn').addEventListener('click', () => {
-            openModal('#language')
+            modal.open('#language')
         })
 
         document.querySelector('#language > button').addEventListener('click', async (e) => {
             await globalThis.i18nextify.i18next.changeLanguage((document.querySelector('#languages') as HTMLSelectElement).selectedOptions[0].value)
             globalThis.i18nextify.forceRerender()
-            closeModal()
+            modal.close()
         })
     })();
     (() => {

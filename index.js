@@ -24,7 +24,7 @@ let server = http.createServer((req, res) => {
     try {
         let dist = path.join(publicDir, req.url)
         let root = path.join('./', req.url)
-        console.log(dist)
+        //console.log(dist)
         if (fs.existsSync(dist) && !fs.statSync(dist).isDirectory()) {
             fs.readFile(dist, (err, content) => {
                 if (err) {

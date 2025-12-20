@@ -1,11 +1,12 @@
 export class BinaryReader extends Uint8Array {
     textDecoder = new TextDecoder()
+    index: number
     #hexLookupTable = (() => {
         let arr = []
         for (let i = 0; i < 256; i++) {
             arr.push(i.toString(16).padStart(2, '0'))
         }
-        arr
+        return arr
     })()
     constructor(arrayBuffer) {
         super(arrayBuffer)

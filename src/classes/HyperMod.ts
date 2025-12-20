@@ -3,17 +3,18 @@ import { Player } from './Player.js'
 import { NPSTracker } from './NPSTracker.js'
 
 // code
+declare let MPP: any
 export class HyperMod {
-    ui = new Object
-    locations = new Object
-    bindings = new Object
-    styles = new Object
-    fileData = new Map
-    fpsHist = new Array
-    player = new Player
-    npsTracker = new NPSTracker
-    currentFile
-    version = 'v0.2.0.72'
+    ui: Record<string, string> = {}
+    locations: Record<string, string> = {}
+    bindings: Object = {}
+    styles: string = ''
+    fileData: Map<string, ArrayBuffer> = new Map
+    fpsHist: number[] = new Array
+    player: Player = new Player
+    npsTracker: NPSTracker = new NPSTracker
+    currentFile: string
+    version: string = 'v0.2.0.73'
     defaultSettings = {
         // MPP section
         forceInfNoteQuota: true,
@@ -78,20 +79,20 @@ export class HyperMod {
         '#ff0088',
         '#ff0044',
     ]
-    canvas = document.createElement('canvas')
-    ctx = this.canvas?.getContext('2d')
-    now = performance.now()
-    frames = 0
-    fps = 0
-    lastTime = performance.now()
-    prefix = '$'
-    messageLoop
-    hasFileDialogOpen = false
-    hasMenuOpen = false
-    canvasBoxHeight = 150
-    topOfPiano = null
-    ping = 0
-    hsvHex = '#000000'
+    canvas: HTMLCanvasElement = document.createElement('canvas')
+    ctx: CanvasRenderingContext2D = this.canvas?.getContext('2d')
+    now: number = performance.now()
+    frames: number = 0
+    fps: number = 0
+    lastTime: number = performance.now()
+    prefix: string = '$'
+    messageLoop: number
+    hasFileDialogOpen: boolean = false
+    hasMenuOpen: boolean = false
+    canvasBoxHeight: number = 150
+    topOfPiano: number = null
+    ping: number = 0
+    hsvHex: string = '#000000'
     get tag_log() {
         if (this.lsSettings.showChatCommands ?? true)
             return `[HyperMod ${this.version}] - `
@@ -196,7 +197,7 @@ export class HyperMod {
                     case 'random':
                         if (this.fileData.size == 0)
                             return this.sendMessage(this.tag_error + `You need to add a MIDI first. Use the HyperMod UI for this.`)
-                        let fn = this.fileData.keys().toArray()[Math.floor(Math.random() * this.fileData.size)]
+                        let fn = Array.from(this.fileData.keys())[Math.floor(Math.random() * this.fileData.size)]
                         this.sendMessage(this.tag_success + `Loading MIDI \`\`\`${fn}\`\`\`...`)
                         await this.loadMIDI(fn)
                         this.updateFileList()
@@ -232,7 +233,7 @@ export class HyperMod {
                     case 'random':
                         if (this.fileData.size == 0)
                             return this.sendMessage(this.tag_error + `You need to add a MIDI first. Use the HyperMod UI for this.`)
-                        let fn = this.fileData.keys().toArray()[Math.floor(Math.random() * this.fileData.size)]
+                        let fn = Array.from(this.fileData.keys())[Math.floor(Math.random() * this.fileData.size)]
                         this.sendMessage(this.tag_success + `Loading MIDI \`\`\`${fn}\`\`\`...`)
                         await this.loadMIDI(fn)
                         this.updateFileList()
@@ -288,7 +289,7 @@ export class HyperMod {
     }
     constructor() {
         if (typeof MPP !== 'undefined' && MPP.addons?.hyperMod)
-            throw Error`no...`
+            throw Error(`no...`)
 
         this.loadUI()
         this.getSettings()
@@ -634,7 +635,7 @@ export class HyperMod {
             input.type = 'file', input.accept = '.mid'
             input.multiple = true
             this.hasFileDialogOpen = true
-            input.addEventListener('change', async e => {
+            $(input).on('change', async e => {
                 try {
                     for (let file of e.target.files) {
                         if (!file) continue;
@@ -648,7 +649,7 @@ export class HyperMod {
             })
             input.click();
             input.remove()
-            resolve()
+            resolve(true)
         });
     }
     toggleMenu() {
@@ -734,7 +735,7 @@ export class HyperMod {
         })
 
         // update settings
-        $('input.hypermod').each((i, t) => {
+        $('input.hypermod').each((i, t: HTMLInputElement) => {
             if (!t.dataset.setting)
                 return
             if (!(t.dataset.setting in this.defaultSettings))
