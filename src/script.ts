@@ -8,20 +8,24 @@ import { EventEmitter } from './classes/EventEmitter.js'
 import { AudioEngine } from './classes/AudioEngine.js'
 import { Renderer } from './classes/Renderer.js'
 import { Rect } from './classes/Rect.js'
+import { KeyboardNote } from './classes/KeyboardNote.js'
 
 // import: local interfaces
-import type { AudioVoice } from './interfaces/AudioVoice.js'
-import type { SoundPack } from './interfaces/SoundPack.js'
-import type { Blip } from './interfaces/Blip.js'
-import type { ParticipantInfo } from './interfaces/ParticipantInfo.js'
+import { AudioVoice } from './interfaces/AudioVoice.js'
+import { SoundPack } from './interfaces/SoundPack.js'
+import { Blip } from './interfaces/Blip.js'
+import { ParticipantInfo } from './interfaces/ParticipantInfo.js'
+import { IncomingMessage } from './interfaces/IncomingMessage.js'
 
 // import: local constants
 import { MIDI_KEY_MAP } from './constants.js'
 
 // import: local methods
 import { parseMarkdown, parseContent, parseUrl } from './modules/util.js'
+import { ChannelSettings } from './interfaces/ChannelSettings.js'
 
-let translation = window.i18nextify!.init({
+// code
+let translation = globalThis.i18nextify!.init({
     autorun: false
 })
 
@@ -55,11 +59,11 @@ $(function() {
         'color:gray; font-size:12px;'
     )
     
-    var test_mode = window.location.hash && window.location.hash.match(/^(?:#.+)*#test(?:#.+)*$/i)
+    var test_mode = globalThis.location.hash && globalThis.location.hash.match(/^(?:#.+)*#test(?:#.+)*$/i)
 
-    var gSeeOwnCursor = window.location.hash && window.location.hash.match(/^(?:#.+)*#seeowncursor(?:#.+)*$/i)
+    var gSeeOwnCursor = globalThis.location.hash && globalThis.location.hash.match(/^(?:#.+)*#seeowncursor(?:#.+)*$/i)
 
-    var gMidiVolumeTest = window.location.hash && window.location.hash.match(/^(?:#.+)*#midivolumetest(?:#.+)*$/i)
+    var gMidiVolumeTest = globalThis.location.hash && globalThis.location.hash.match(/^(?:#.+)*#midivolumetest(?:#.+)*$/i)
 
     if (!Array.prototype.indexOf) {
         Array.prototype.indexOf = function (elt /*, from*/) {
@@ -79,24 +83,17 @@ $(function() {
 
     var TIMING_TARGET = 1000
 
-    window.requestAnimationFrame =
-        window.requestAnimationFrame ||
-        window.webkitRequestAnimationFrame ||
-        window.mozRequestAnimationFrame ||
-        window.oRequestAnimationFrame ||
-        window.msRequestAnimationFrame ||
+    globalThis.requestAnimationFrame =
+        globalThis.requestAnimationFrame ||
         function (callback) {
             return setTimeout(callback, 1000 / 60)
         }
     
-    window.AudioContext = 
-        window.AudioContext || 
-        window.webkitAudioContext || 
+    globalThis.AudioContext = 
+        globalThis.AudioContext || 
         undefined
 
     // Utility
-
-    ////////////////////////////////////////////////////////////////
     let gHyperMod = new HyperMod()
 
     let BASIC_PIANO_SCALES = {
@@ -129,9 +126,61 @@ $(function() {
         'Notes in G# / Ab Minor': ['A♭', 'B♭', 'B', 'D♭', 'E♭', 'E', 'G♭', 'A♭']
     }
 
-    // AudioEngine classes
+    // scheduler
+    let scheduler = {
+        initialized: false,
+        tasks: [],
+        timeouts: [],
+        init() {
+            if (this.initialized)
+                return console.warn('MPP.scheduler.init() called more than once!')
+            this.initialized = true
+            let loop = () => {
+                this.update()
+                requestAnimationFrame(loop)
+            }
+            loop()
+        },
+        update() {
+            if (!this.initialized)
+                return
+            for (let i = this.timeouts.length - 1; i >= 0; i--) {
+                let timeout = this.timeouts[i]
+                if (typeof timeout === 'undefined')
+                    continue
+                if (performance.now() < timeout.time)
+                    continue
+                timeout.cb()
+                this.timeouts.splice(i, 1)
+            }
+            for (let task of this.tasks) {
+                task()
+            }
+        },
+        post(cb: () => void) {
+            if (!this.initialized)
+                return
+            this.tasks.push(cb)
+        },
+        remove(cb: () => void) {
+            if (!this.initialized)
+                return
+            this.tasks.splice(this.tasks.indexOf(cb), 1)
+        },
+        setTimeout(cb: () => void, delay: number) {
+            if (!this.initialized)
+                return
+            if (delay <= 0)
+                return cb()
+            this.timeouts.push({
+                cb,
+                time: performance.now() + delay
+            })
+        }
+    }
+    scheduler.init()
 
-    ////////////////////////////////////////////////////////////////
+    // AudioEngine classes
     class AudioEngineWeb extends AudioEngine {
         threshold: number
         worker?: Worker
@@ -140,7 +189,7 @@ $(function() {
         limiterNode: DynamicsCompressorNode
         pianoGain: GainNode
         synthGain: GainNode
-        playings: Record<string, AudioVoice[]>
+        playings: Record<string, AudioVoice>
         constructor() {
             super()
             this.threshold = 0
@@ -156,7 +205,7 @@ $(function() {
                 }
             }
         }
-        init(cb: () => any) {
+        init(cb?: () => any) {
             super.init(this)
             if (AudioContext) {
                 this.context = new AudioContext({ latencyHint: 'interactive' })
@@ -195,10 +244,6 @@ $(function() {
                                 this.sounds[id] = b
                                 cb?.()
                             })
-                        else {
-                            this.sounds[id] = data
-                            cb?.()
-                        }
                     })
                 })
             } catch (e) {
@@ -218,32 +263,27 @@ $(function() {
             if (!this.context) return
             if (!(id in this.sounds)) return
             if (this.volume <= 0 || (gHyperMod.lsSettings.disableAudioEngine ?? false)) return
-            if (!this.playings[id])
-                this.playings[id] = []
-            var source = this.context.createBufferSource()
-            source.buffer = this.sounds[id]
-            var gain = this.context.createGain()
-            gain.gain.value = vol
-            source.connect(gain)
-            gain.connect(this.pianoGain)
-            source.start(time)
+            var source = this.context.createBufferSource();
+            source.buffer = this.sounds[id];
+            var gain = this.context.createGain();
+            gain.gain.value = vol;
+            source.connect(gain);
+            gain.connect(this.pianoGain);
+            source.start(time);
             // Patch from ste-art remedies stuttering under heavy load
-            if (this.playings[id].length > 0 || this.voices > 50) {
-                let playing = this.playings[id].shift()
-                if (playing) {
-                    playing.source.stop(time)
-                    if (enableSynth && playing.voice) {
-                        playing.voice.stop(time)
-                    }
+            if (this.playings[id]) {
+                var playing = this.playings[id];
+                playing.gain.gain.setValueAtTime(playing.gain.gain.value, time);
+                playing.gain.gain.linearRampToValueAtTime(0.0, time + 0.2);
+                playing.source.stop(time + 0.21);
+                if (enableSynth && playing.voice) {
+                    playing.voice.stop(time);
                 }
-                this.voices--
             }
-            let playing: AudioVoice = { source, gain, part_id }
+            this.playings[id] = { source: source, gain: gain, part_id: part_id };
             if (enableSynth) {
-                playing.voice = new SynthVoice(id, time)
+                this.playings[id].voice = new SynthVoice(id, time);
             }
-            this.playings[id].push(playing)
-            this.voices++
         }
         play(id: string, vol: number, delay_ms: number, part_id: string) {
             if (!this.sounds.hasOwnProperty(id)) return
@@ -254,7 +294,7 @@ $(function() {
             if (delay <= 0) this.actualPlay(id, vol, time, part_id)
             else {
                 if ((gHyperMod.lsSettings.removeWorkerTimer ?? true) || !this.worker)
-                    setTimeout(() => {
+                    scheduler.setTimeout(() => {
                         this.actualPlay(id, vol, time, part_id)
                     }, delay)
                 else
@@ -270,28 +310,30 @@ $(function() {
                     }) // but start scheduling right before play.
             }
         }
-        actualStop(id, time, part_id) {
-            if (this.volume <= 0 || (gHyperMod.lsSettings.disableAudioEngine ?? false)) return
+        actualStop(id: string, time: number, part_id: string) {
+            if (this.paused) return
             if (!this.context) return
-            if (!this.playings[id])
-                this.playings[id] = []
-            if (id in this.playings && this.playings[id]) {
-                let playing = this.playings[id].shift()
-                if (playing && playing.part_id === part_id) {
-                    var gain = playing.gain.gain
-                    gain.setValueAtTime(gain.value, time)
-                    gain.linearRampToValueAtTime(gain.value * 0.1, time + 0.16)
-                    gain.linearRampToValueAtTime(0.0, time + 0.4)
-                    playing.source.stop(time + 0.41)
+            if (!(id in this.sounds)) return
+            if (this.volume <= 0 || (gHyperMod.lsSettings.disableAudioEngine ?? false)) return
+            if (
+                this.playings.hasOwnProperty(id) &&
+                this.playings[id] &&
+                this.playings[id].part_id === part_id
+            ) {
+                var gain = this.playings[id].gain.gain;
+                gain.setValueAtTime(gain.value, time);
+                gain.linearRampToValueAtTime(gain.value * 0.1, time + 0.16);
+                gain.linearRampToValueAtTime(0.0, time + 0.4);
+                this.playings[id].source.stop(time + 0.41);
 
-                    if (playing.voice) {
-                        playing.voice.stop(time)
-                    }
-                    this.voices--
+                if (this.playings[id].voice) {
+                    this.playings[id].voice.stop(time);
                 }
+
+                this.playings[id] = null;
             }
         }
-        stop(id, delay_ms, part_id) {
+        stop(id: string, delay_ms: number, part_id: string) {
             if (this.volume <= 0 || (gHyperMod.lsSettings.disableAudioEngine ?? false)) return
             if (!this.context) return
             var time = this.context.currentTime + delay_ms / 1000
@@ -299,7 +341,7 @@ $(function() {
             if (delay <= 0) this.actualStop(id, time, part_id)
             else {
                 if ((gHyperMod.lsSettings.removeWorkerTimer ?? true) || !this.worker)
-                    setTimeout(() => {
+                    scheduler.setTimeout(() => {
                         this.actualStop(id, time, part_id)
                     }, delay)
                 else
@@ -314,7 +356,7 @@ $(function() {
                     })
             }
         }
-        setVolume(x) {
+        setVolume(x: number) {
             super.setVolume(x)
             this.masterGain.gain.value = this.volume
         }
@@ -391,9 +433,8 @@ $(function() {
         }
     }
     */
-    // Renderer classes
 
-    ////////////////////////////////////////////////////////////////
+    // Renderer classes
     class CanvasRenderer extends Renderer {
         canvas: HTMLCanvasElement
         ctx: CanvasRenderingContext2D
@@ -428,8 +469,8 @@ $(function() {
                 offy += element.offsetTop
             } while ((element = element.offsetParent))
             return {
-                x: (e.pageX - offx) * window.devicePixelRatio,
-                y: (e.pageY - offy) * window.devicePixelRatio
+                x: (e.pageX - offx) * globalThis.devicePixelRatio,
+                y: (e.pageY - offy) * globalThis.devicePixelRatio
             }
         }
         init(piano) {
@@ -493,8 +534,8 @@ $(function() {
             if (this.height < this.width * 0.2) this.height = Math.floor(this.width * 0.2)
             this.canvas.width = this.width
             this.canvas.height = this.height
-            this.canvas.style.width = this.width / window.devicePixelRatio + 'px'
-            this.canvas.style.height = this.height / window.devicePixelRatio + 'px'
+            this.canvas.style.width = this.width / globalThis.devicePixelRatio + 'px'
+            this.canvas.style.height = this.height / globalThis.devicePixelRatio + 'px'
 
             // calculate key sizes
             this.whiteKeyWidth = Math.floor(this.width / 52)
@@ -730,7 +771,7 @@ $(function() {
 
                     // render blips
                     if (key.blips.length > 0) {
-                        var w, h
+                        var w: number, h: number
                         if (key.sharp) {
                             x += this.blackBlipX
                             y = this.blackBlipY
@@ -814,7 +855,7 @@ $(function() {
             this.loading[typeof pack === 'string' ? pack : pack.url] = true
             let add = (obj: SoundPack) => {
                 let added = typeof this.packs.find(a => obj.name === a.name) !== 'undefined'
-                if (added) return console.warn(`Woah woah woah, pack \'${pack.name ?? pack}\' already exists!`) //no adding soundpacks twice D:<
+                if (added) return console.warn(`Woah woah woah, pack \'${typeof pack === 'string' ? pack : pack.name}\' already exists!`) //no adding soundpacks twice D:<
 
                 if (obj.url.substring(obj.url.length - 1) != '/') obj.url = obj.url + '/'
                 let html = document.createElement('li')
@@ -870,7 +911,7 @@ $(function() {
             this.loadPack(this.soundSelection, true)
         }
         loadPack(pack: SoundPack | string, f?: boolean) {
-            pack = this.packs.find(a => pack === a.name || pack.name === a.name)
+            pack = this.packs.find(a => typeof pack === 'string' ? pack === a.name : pack.name === a.name)
             if (!pack)
                 return
             if (typeof pack === 'string') {
@@ -948,7 +989,7 @@ $(function() {
         _midiBuffer: any
         _blipBuffer: any
         _flusherRunning: any
-        constructor(rootElement) {
+        constructor(rootElement: HTMLElement) {
             this.rootElement = rootElement
         }
         init() {
@@ -958,7 +999,7 @@ $(function() {
             var black_spatial = 0
             var black_it = 0
             var black_lut = [2, 1, 2, 1, 1]
-            var addKey = (note, octave) => {
+            var addKey = (note: string, octave: number) => {
                 var key = new PianoKey(note, octave)
                 this.keys[key.note] = key
                 if (key.sharp) {
@@ -986,12 +1027,12 @@ $(function() {
             }
             this.audio = new AudioEngineWeb().init()
             this.renderer = new CanvasRenderer().init(this)
-            window.addEventListener('resize', () => {
+            $(window).on('resize', () => {
                 this.renderer.resize()
             })
             return this
         }
-        bufferPlay(note, vol, participant, delay_ms=0) {
+        bufferPlay(note: string, vol: number, participant: ParticipantInfo, delay_ms: number = 0) {
             if (gHyperMod.lsSettings.trackNPS ?? false) gHyperMod.npsTracker.noteOn();
             if (!this.keys.hasOwnProperty(note) || !participant) return;
             const key = this.keys[note];
@@ -1042,7 +1083,7 @@ $(function() {
                     for (let i = 0; i < midiPerFrame && midiBuf.count > 0; i++) {
                         const ev = midiBuf.buf[midiBuf.head];
                         gMidi.noteOn(ev.note, ev.vol, ev.delay, ev.participantId);
-                        if (gHyperMod.lsSettings.enableNoteVisualizer ?? false) setTimeout(() => gHyperMod.visualizer.noteOn(MIDI_KEY_MAP[note.n] ?? 0, participant), delay_ms)
+                        if (gHyperMod.lsSettings.enableNoteVisualizer ?? false) scheduler.setTimeout(() => gHyperMod.visualizer.noteOn(MIDI_KEY_MAP[note] ?? 0, participant), delay_ms)
                         midiBuf.head = (midiBuf.head + 1) % midiBuf.buf.length;
                         midiBuf.count--;
                     }
@@ -1066,7 +1107,7 @@ $(function() {
                             const div = ev.participant.nameDiv;
                             div.__isBouncing = true;
                             div.classList.add("play");
-                            setTimeout(() => { div.classList.remove("play"); div.__isBouncing = false; }, 30);
+                            scheduler.setTimeout(() => { div.classList.remove("play"); div.__isBouncing = false; }, 30);
                         }
 
                         blipBuf.head = (blipBuf.head + 1) % blipBuf.buf.length;
@@ -1081,54 +1122,36 @@ $(function() {
                 requestAnimationFrame(flush);
             }
         }
-        play(note, vol, participant, delay_ms=0) {
+        play(note: string, vol: number, participant: ParticipantInfo, delay_ms: number = 0) {
             if (gHyperMod.lsSettings.trackNPS ?? false) gHyperMod.npsTracker.noteOn()
             if (!this.keys.hasOwnProperty(note) || !participant) return
             var key = this.keys[note]
             if (key.loaded && this.audio.volume > 0 && !(gHyperMod.lsSettings.disableAudioEngine ?? false)) this.audio.play(key.note, vol, delay_ms, participant.id)
             gMidi.noteOn(key.note, vol * 100, delay_ms, participant.id)
-            // redunant, but idc
-            if (delay_ms <= 0) {
+            scheduler.setTimeout(() => {
                 // spawn a blip
                 let limit = gHyperMod.lsSettings.blipLimit ?? 8
                 key.timePlayed = Date.now()
                 if ((gHyperMod.lsSettings.enableBlipLimit ?? true) && key.blips.length >= limit)
                     key.blips.shift()
                 key.blips.push({ time: key.timePlayed, color: participant.color })
-                if (gHyperMod.lsSettings.enableNoteVisualizer ?? false) setTimeout(() => gHyperMod.visualizer.noteOn(MIDI_KEY_MAP[note] ?? 0, participant), delay_ms)
+                if (gHyperMod.lsSettings.enableNoteVisualizer ?? false) scheduler.setTimeout(() => gHyperMod.visualizer.noteOn(MIDI_KEY_MAP[note] ?? 0, participant), delay_ms)
                 // bounce player's name, if enabled
                 if (!(gHyperMod.lsSettings.removeNameBouncing ?? true)) {
                     var jq_namediv = $(participant.nameDiv)
                     jq_namediv.addClass('play')
-                    setTimeout(function () {
+                    scheduler.setTimeout(function () {
                         jq_namediv.removeClass('play')
                     }, 30)
                 }
-            } else
-                setTimeout(() => {
-                    // spawn a blip
-                    let limit = gHyperMod.lsSettings.blipLimit ?? 8
-                    key.timePlayed = Date.now()
-                    if ((gHyperMod.lsSettings.enableBlipLimit ?? true) && key.blips.length >= limit)
-                        key.blips.shift()
-                    key.blips.push({ time: key.timePlayed, color: participant.color })
-                    if (gHyperMod.lsSettings.enableNoteVisualizer ?? false) setTimeout(() => gHyperMod.visualizer.noteOn(MIDI_KEY_MAP[note] ?? 0, participant), delay_ms)
-                    // bounce player's name, if enabled
-                    if (!(gHyperMod.lsSettings.removeNameBouncing ?? true)) {
-                        var jq_namediv = $(participant.nameDiv)
-                        jq_namediv.addClass('play')
-                        setTimeout(function () {
-                            jq_namediv.removeClass('play')
-                        }, 30)
-                    }
-                }, delay_ms)
+            }, delay_ms)
         }
-        stop(note, participant, delay_ms=0) {
+        stop(note: string, participant: ParticipantInfo, delay_ms: number = 0) {
             if (!this.keys.hasOwnProperty(note)) return
             var key = this.keys[note]
             if (key.loaded && this.audio.volume > 0 && !(gHyperMod.lsSettings.disableAudioEngine ?? false)) this.audio.stop(key.note, delay_ms, participant.id)
             gMidi.noteOff(key.note, delay_ms, participant.id)
-            if (gHyperMod.lsSettings.enableNoteVisualizer ?? false) setTimeout(() => gHyperMod.visualizer.noteOff(MIDI_KEY_MAP[note] ?? 0), delay_ms)
+            if (gHyperMod.lsSettings.enableNoteVisualizer ?? false) scheduler.setTimeout(() => gHyperMod.visualizer.noteOff(MIDI_KEY_MAP[note] ?? 0), delay_ms)
         }
     }
     var gPiano = new Piano($('#piano')[0]).init()
@@ -1164,7 +1187,7 @@ $(function() {
         autoSustain = false
         heldNotes = {}
         sustainNotes = {}
-        press(id, vol) {
+        press(id: string, vol: number) {
             if (gClient.preventsPlaying() || gNoteQuota.points - 1 <= 0)
                 return
             this.heldNotes[id] = true
@@ -1178,7 +1201,7 @@ $(function() {
             gClient.startNote(id, vol)
             gNoteQuota.spend(1)
         }
-        release(id) {
+        release(id: string) {
             if (!this.heldNotes[id])
                 return
             this.heldNotes[id] = false
@@ -1211,7 +1234,7 @@ $(function() {
             this.sustainNotes = {}
         }
     }
-    function getParameterByName(name, url = window.location.href) {
+    function getParameterByName(name, url = globalThis.location.href) {
         name = name.replace(/[\[\]]/g, '\\$&')
         var regex = new RegExp('[?&]' + name + '(=([^&#]*)|&|#|$)'),
             results = regex.exec(url)
@@ -1221,9 +1244,9 @@ $(function() {
     }
 
     //html/css overrides for multiplayerpiano.com
-    if (window.location.hostname === 'multiplayerpiano.com') {
+    if (globalThis.location.hostname === 'multiplayerpiano.com') {
         //disable autocomplete
-        $('#chat-input')[0].autocomplete = 'off'
+        ($('#chat-input')[0] as HTMLInputElement).autocomplete = 'off'
         //add rules button
         let aElement = document.createElement('a')
         aElement.href = 'https://docs.google.com/document/d/1wQvGwQdaI8PuEjSWxKDDThVIoAlCYIxQOyfyi4o6HcM/edit?usp=sharing'
@@ -1238,8 +1261,8 @@ $(function() {
     }
 
     function getRoomNameFromURL() {
-        let channel_id = decodeURIComponent(window.location.search).replace('?c=', '')
-        if (channel_id.substr(0, 1) == '/') channel_id = channel_id.substr(1)
+        let channel_id = decodeURIComponent(globalThis.location.search).replace('?c=', '')
+        if (channel_id.substring(0, 1) == '/') channel_id = channel_id.substring(1)
         if (!channel_id) {
             channel_id = getParameterByName('c')
         }
@@ -1266,14 +1289,13 @@ $(function() {
         channel_id = 'lobby'
     }
 
-    var wssport = 8443
     var gClient = new Client(gHyperMod.lsSettings.connectUrl ?? 'wss://mppclone.com')
     if (loginInfo) {
         gClient.setLoginInfo(loginInfo)
     }
     gClient.setChannel(channel_id)
 
-    gClient.on('disconnect', function (evt) {
+    gClient.on('disconnect', () => {
         //console.log(evt);
     })
 
@@ -1281,11 +1303,11 @@ $(function() {
     var youreMentioned = false
     var youreReplied = false
 
-    window.addEventListener('focus', function (event) {
+    $(window).on('focus', () => {
         tabIsActive = true
         youreMentioned = false
         youreReplied = false
-        var count = Object.keys(MPP.client.ppl).length
+        var count = Object.keys(gClient.ppl).length
         if (count > 0) {
             document.title = 'Piano (' + count + ')'
         } else {
@@ -1293,7 +1315,7 @@ $(function() {
         }
     })
 
-    window.addEventListener('blur', function (event) {
+    $(window).on('blur', () => {
         tabIsActive = false
     })
 
@@ -1308,7 +1330,7 @@ $(function() {
                     '<span class="number" translated>' +
                         count +
                         '</span> ' +
-                        window.i18nextify.i18next.t('people are playing', { count })
+                        globalThis.i18nextify.i18next.t('people are playing', { count })
                 )
                 if (!tabIsActive) {
                     if (youreMentioned || youreReplied) {
@@ -1428,13 +1450,13 @@ $(function() {
             part.nameDiv.appendChild(textDiv)
             part.nameDiv.setAttribute('translated', '')
 
-            var arr = $('#names .name')
-            arr.sort(function (a, b) {
+            var arr = $('#names .name');
+            (arr as any).sort((a, b) => {
                 if (a.id > b.id) return 1
                 else if (a.id < b.id) return -1
                 else return 0
             })
-            $('#names').html(arr)
+            $('#names').html(arr as any)
         }
         gClient.on('participant added', function (part) {
             if (shouldHideUser(part)) return
@@ -1499,7 +1521,7 @@ $(function() {
             $(part.cursorDiv).find('.name .nametext').text(name)
             $(part.cursorDiv).find('.name').css('background-color', color)
         })
-        gClient.on('ch', function (msg) {
+        gClient.on('ch', () => {
             for (var id in gClient.ppl) {
                 if (gClient.ppl.hasOwnProperty(id)) {
                     var part = gClient.ppl[id]
@@ -1561,11 +1583,11 @@ $(function() {
     })()
 
     // Handle changes to crown
-    ;(function () {
+    ;(() => {
         var jqcrown = $('<div id="crown"></div>').appendTo(document.body).hide()
         var jqcountdown = $('<span></span>').appendTo(jqcrown)
         var countdown_interval
-        jqcrown.click(function () {
+        $(jqcrown).on('click', () => {
             gClient.sendArray([{ m: 'chown', id: gClient.participantId }])
         })
         gClient.on('ch', function (msg) {
@@ -1635,7 +1657,7 @@ $(function() {
             if (ms < 0) {
                 ms = 0
             } else if (ms > 10000) continue
-            let vel = typeof note.v !== 'undefined' ? parseFloat(note.v) : DEFAULT_VELOCITY
+            let vel = typeof note.v !== 'undefined' ? Number.parseFloat(note.v as unknown as string) : DEFAULT_VELOCITY
             if (note.s == 1 || vel <= 0) {
                 gPiano.stop(note.n, participant, ms)
             } else {
@@ -1678,14 +1700,14 @@ $(function() {
             }
         }
     }, 50)
-    $(document).mousemove(function (event) {
-        mx = ((event.pageX / $(window).width()) * 100).toFixed(2)
-        my = ((event.pageY / $(window).height()) * 100).toFixed(2)
+    $(document).on('mousemove', e =>  {
+        mx = Number.parseFloat(((e.pageX / $(window).width()) * 100).toFixed(2))
+        my = Number.parseFloat(((e.pageY / $(window).height()) * 100).toFixed(2))
     })
 
     // Room settings button
     ;(function () {
-        gClient.on('ch', function (msg) {
+        gClient.on('ch', () => {
             if (gClient.isOwner() || gClient.permissions.chsetAnywhere) {
                 $('#room-settings-btn').show()
             } else {
@@ -1700,11 +1722,11 @@ $(function() {
                 $('#getcrown-btn').hide()
             }
         })
-        $('#room-settings-btn').click(function (evt) {
+        $('#room-settings-btn').on('click', () => {
             if (gClient.channel && (gClient.isOwner() || gClient.permissions.chsetAnywhere)) {
                 var settings = gClient.channel.settings
                 openModal('#room-settings')
-                setTimeout(function () {
+                scheduler.setTimeout(function () {
                     $('#room-settings .checkbox[name=visible]').prop('checked', settings.visible)
                     $('#room-settings .checkbox[name=chat]').prop('checked', settings.chat)
                     $('#room-settings .checkbox[name=crownsolo]').prop('checked', settings.crownsolo)
@@ -1717,7 +1739,7 @@ $(function() {
                 }, 100)
             }
         })
-        $('#room-settings .submit').click(function () {
+        $('#room-settings .submit').on('click', () => {
             var settings = {
                 visible: $('#room-settings .checkbox[name=visible]').is(':checked'),
                 chat: $('#room-settings .checkbox[name=chat]').is(':checked'),
@@ -1732,27 +1754,27 @@ $(function() {
             gClient.setChannelSettings(settings)
             closeModal()
         })
-        $('#room-settings .drop-crown').click(function () {
+        $('#room-settings .drop-crown').on('click', () => {
             closeModal()
             if (confirm('This will drop the crown...!')) gClient.sendArray([{ m: 'chown' }])
         })
     })()
 
     // Clear chat button
-    $('#clearchat-btn').click(function (evt) {
+    $('#clearchat-btn').on('click', () => {
         if (confirm('Are you sure you want to clear chat?')) gClient.sendArray([{ m: 'clearchat' }])
     })
 
     // Get crown button
-    $('#getcrown-btn').click(function (evt) {
-        gClient.sendArray([{ m: 'chown', id: MPP.client.getOwnParticipant().id }])
+    $('#getcrown-btn').on('click', () => {
+        gClient.sendArray([{ m: 'chown', id: gClient.getOwnParticipant().id }])
     })
 
     // Vanish or unvanish button
-    $('#vanish-btn').click(function (evt) {
+    $('#vanish-btn').on('click', () => {
         gClient.sendArray([{ m: 'v', vanish: !gClient.getOwnParticipant().vanished }])
     })
-    gClient.on('participant update', (part) => {
+    gClient.on('participant update', part => {
         if (part._id === gClient.getOwnParticipant()._id) {
             if (part.vanished) {
                 $('#vanish-btn').text('Unvanish')
@@ -1761,7 +1783,7 @@ $(function() {
             }
         }
     })
-    gClient.on('participant added', (part) => {
+    gClient.on('participant added', part => {
         if (part._id === gClient.getOwnParticipant()._id) {
             if (part.vanished) {
                 $('#vanish-btn').text('Unvanish')
@@ -1772,14 +1794,14 @@ $(function() {
     })
 
     // Handle notifications
-    gClient.on('notification', function (msg) {
+    gClient.on('notification', msg => {
         new SiteNotification(msg)
     })
 
     // Don't foget spin
-    gClient.on('ch', function (msg) {
+    gClient.on('ch', msg => {
         var chidlo = msg.ch._id.toLowerCase()
-        if (chidlo === 'spin' || chidlo.substr(-5) === '/spin') {
+        if (chidlo === 'spin' || chidlo.substring(-5) === '/spin') {
             $('#piano').addClass('spin')
         } else {
             $('#piano').removeClass('spin')
@@ -1799,7 +1821,7 @@ $(function() {
   }*/
 
     // Crownsolo notice
-    gClient.on('ch', function (msg) {
+    gClient.on('ch', msg => {
         let notice = ''
         let has_notice = false
         if (msg.ch.settings.crownsolo) {
@@ -1818,7 +1840,7 @@ $(function() {
             if (notice_div.is(':visible')) notice_div.fadeOut(1000)
         }
     })
-    gClient.on('disconnect', function () {
+    gClient.on('disconnect', () => {
         $('#room-notice').fadeOut(1000)
     })
 
@@ -1899,7 +1921,7 @@ $(function() {
     ;(function () {
         var old_color1 = new Color('#000000')
         var old_color2 = new Color('#000000')
-        function setColor(hex, hex2) {
+        function setColor(hex: string, hex2?: string) {
             var color1 = new Color(hex)
             var color2 = new Color(hex2 || hex)
             if (!hex2) color2.add(-0x40, -0x40, -0x40)
@@ -1917,8 +1939,8 @@ $(function() {
             setColor('#220022', '#000022')
         }
 
-        window.setBackgroundColor = setColor
-        window.setBackgroundColorToDefault = setColorToDefault
+        globalThis.setBackgroundColor = setColor
+        globalThis.setBackgroundColorToDefault = setColorToDefault
 
         setColorToDefault()
 
@@ -1937,27 +1959,17 @@ $(function() {
         })
     })()
 
-    var volume_slider = document.getElementById('volume-slider')
-    volume_slider.value = gPiano.audio.volume
+    var volume_slider = document.getElementById('volume-slider') as HTMLInputElement
+    volume_slider.value = gPiano.audio.volume.toString()
     $('#volume-label').text('Volume: ' + Math.floor(gPiano.audio.volume * 100) + '%')
     volume_slider.addEventListener('input', function (evt) {
         var v = +volume_slider.value
         gPiano.audio.setVolume(v)
-        if (window.localStorage) localStorage.volume = v
+        if (globalThis.localStorage) localStorage.volume = v
         $('#volume-label').text('Volume: ' + Math.floor(v * 100) + '%')
     })
-
-    class Note {
-        note: any
-        octave: any
-        constructor(note, octave) {
-            this.note = note
-            this.octave = octave || 0
-        }
-    }
-
-    var n = function (a, b) {
-        return { note: new Note(a, b), held: false }
+    var n = function (a: string, b?: number) {
+        return { note: new KeyboardNote(a, b), held: false }
     }
 
     var layouts = {
@@ -2088,9 +2100,9 @@ $(function() {
 
             if (++gKeyboardSeq == 3) {
                 gKnowsYouCanUseKeyboard = true
-                if (window.gKnowsYouCanUseKeyboardTimeout) clearTimeout(gKnowsYouCanUseKeyboardTimeout)
+                if (globalThis.gKnowsYouCanUseKeyboardTimeout) clearTimeout(globalThis.gKnowsYouCanUseKeyboardTimeout)
                 if (localStorage) localStorage.knowsYouCanUseKeyboard = true
-                if (window.gKnowsYouCanUseKeyboardNotification) gKnowsYouCanUseKeyboardNotification.close()
+                if (globalThis.gKnowsYouCanUseKeyboardNotification) globalThis.gKnowsYouCanUseKeyboardNotification.close()
             }
 
             if (!gNoPreventDefault) evt.preventDefault()
@@ -2221,17 +2233,17 @@ $(function() {
     }
 
     // NoteQuota
-    var gNoteQuota = do {
+    var gNoteQuota = (() => {
         var last_rat = 0
         var nqjq = $('#quota .value')
-        new NoteQuota(function (points) {
+        let nq = new NoteQuota()
+        scheduler.post(() => {
             // update UI
-            var rat = (points / this.max) * 100
-            if (rat <= last_rat) nqjq.stop(true, true).css('width', rat.toFixed(0) + '%')
-            else nqjq.stop(true, true).animate({ width: rat.toFixed(0) + '%' }, 2000, 'linear')
-            last_rat = rat
+            var rat = (nq.points / nq.max) * 100
+            nqjq.css('width', rat.toFixed(0) + '%')
         })
-    }
+        return nq
+    })()
     let normalNoteQuotaParams = NoteQuota.PARAMS_NORMAL
     if (gHyperMod.lsSettings.forceInfNoteQuota ?? false) {
         gClient.on('nq', function(nq_params) {
@@ -2271,7 +2283,7 @@ $(function() {
     var gMessageId
     gClient.on(`participant removed`, (part) => {
         if (gIsReplying && part._id === gReplyParticipant._id) {
-            MPP.chat.cancelReply()
+            chat.cancelReply()
         }
     })
 
@@ -2286,7 +2298,7 @@ $(function() {
                 var id = target.participantId
                 if (id == gClient.participantId) {
                     openModal('#rename', 'input[name=name]')
-                    setTimeout(function () {
+                    scheduler.setTimeout(function () {
                         $('#rename input[name=name]').val(gClient.ppl[gClient.participantId].name)
                         $('#rename input[name=color]').val(gClient.ppl[gClient.participantId].color)
                     }, 100)
@@ -2347,13 +2359,13 @@ $(function() {
                 .on('mousedown touchstart', (evt) => {
                     navigator.clipboard.writeText(part._id)
                     evt.target.innerText = 'Copied!'
-                    setTimeout(() => {
+                    scheduler.setTimeout(() => {
                         evt.target.innerText = part._id
                     }, 2500)
                 })
             // add menu items
             if (gPianoMutes.indexOf(part._id) == -1) {
-                $(`<div class="menu-item">${window.i18nextify.i18next.t('Mute Notes')}</div>`)
+                $(`<div class="menu-item">${globalThis.i18nextify.i18next.t('Mute Notes')}</div>`)
                     .appendTo(menu)
                     .on('mousedown touchstart', function (evt) {
                         gPianoMutes.push(part._id)
@@ -2361,7 +2373,7 @@ $(function() {
                         $(part.nameDiv).addClass('muted-notes')
                     })
             } else {
-                $(`<div class="menu-item">${window.i18nextify.i18next.t('Unmute Notes')}</div>`)
+                $(`<div class="menu-item">${globalThis.i18nextify.i18next.t('Unmute Notes')}</div>`)
                     .appendTo(menu)
                     .on('mousedown touchstart', function (evt) {
                         var i
@@ -2371,7 +2383,7 @@ $(function() {
                     })
             }
             if (gChatMutes.indexOf(part._id) == -1) {
-                $(`<div class="menu-item">${window.i18nextify.i18next.t('Mute Chat')}</div>`)
+                $(`<div class="menu-item">${globalThis.i18nextify.i18next.t('Mute Chat')}</div>`)
                     .appendTo(menu)
                     .on('mousedown touchstart', function (evt) {
                         gChatMutes.push(part._id)
@@ -2379,7 +2391,7 @@ $(function() {
                         $(part.nameDiv).addClass('muted-chat')
                     })
             } else {
-                $(`<div class="menu-item">${window.i18nextify.i18next.t('Unmute Chat')}</div>`)
+                $(`<div class="menu-item">${globalThis.i18nextify.i18next.t('Unmute Chat')}</div>`)
                     .appendTo(menu)
                     .on('mousedown touchstart', function (evt) {
                         var i
@@ -2389,7 +2401,7 @@ $(function() {
                     })
             }
             if (!(gPianoMutes.indexOf(part._id) >= 0) || !(gChatMutes.indexOf(part._id) >= 0)) {
-                $(`<div class="menu-item">${window.i18nextify.i18next.t('Mute Completely')}</div>`)
+                $(`<div class="menu-item">${globalThis.i18nextify.i18next.t('Mute Completely')}</div>`)
                     .appendTo(menu)
                     .on('mousedown touchstart', function (evt) {
                         gPianoMutes.push(part._id)
@@ -2401,7 +2413,7 @@ $(function() {
                     })
             }
             if (gPianoMutes.indexOf(part._id) >= 0 || gChatMutes.indexOf(part._id) >= 0) {
-                $(`<div class="menu-item">${window.i18nextify.i18next.t('Unmute Completely')}</div>`)
+                $(`<div class="menu-item">${globalThis.i18nextify.i18next.t('Unmute Completely')}</div>`)
                     .appendTo(menu)
                     .on('mousedown touchstart', function (evt) {
                         var i
@@ -2414,13 +2426,13 @@ $(function() {
                     })
             }
             if (gIsDming && gDmParticipant._id === part._id) {
-                $(`<div class="menu-item">${window.i18nextify.i18next.t('End Direct Message')}</div>`)
+                $(`<div class="menu-item">${globalThis.i18nextify.i18next.t('End Direct Message')}</div>`)
                     .appendTo(menu)
                     .on('mousedown touchstart', function (evt) {
                         chat.endDM()
                     })
             } else {
-                $(`<div class="menu-item">${window.i18nextify.i18next.t('Direct Message')}</div>`)
+                $(`<div class="menu-item">${globalThis.i18nextify.i18next.t('Direct Message')}</div>`)
                     .appendTo(menu)
                     .on('mousedown touchstart', function (evt) {
                         if (!gKnowsHowToDm) {
@@ -2429,8 +2441,8 @@ $(function() {
                             new SiteNotification({
                                 target: '#piano',
                                 duration: 20000,
-                                title: window.i18nextify.i18next.t('How to DM'),
-                                text: window.i18nextify.i18next.t(
+                                title: globalThis.i18nextify.i18next.t('How to DM'),
+                                text: globalThis.i18nextify.i18next.t(
                                     'After you click the button to direct message someone, future chat messages will be sent to them instead of to everyone. To go back to talking in public chat, send a blank chat message, or click the button again.'
                                 )
                             })
@@ -2439,7 +2451,7 @@ $(function() {
                     })
             }
             if (gCursorHides.indexOf(part._id) == -1) {
-                $(`<div class="menu-item">${window.i18nextify.i18next.t('Hide Cursor')}</div>`)
+                $(`<div class="menu-item">${globalThis.i18nextify.i18next.t('Hide Cursor')}</div>`)
                     .appendTo(menu)
                     .on('mousedown touchstart', function (evt) {
                         gCursorHides.push(part._id)
@@ -2447,7 +2459,7 @@ $(function() {
                         $(part.cursorDiv).hide()
                     })
             } else {
-                $(`<div class="menu-item">${window.i18nextify.i18next.t('Show Cursor')}</div>`)
+                $(`<div class="menu-item">${globalThis.i18nextify.i18next.t('Show Cursor')}</div>`)
                     .appendTo(menu)
                     .on('mousedown touchstart', function (evt) {
                         var i
@@ -2457,59 +2469,59 @@ $(function() {
                     })
             }
 
-            $(`<div class="menu-item">${window.i18nextify.i18next.t('Mention')}</div>`)
+            $(`<div class="menu-item">${globalThis.i18nextify.i18next.t('Mention')}</div>`)
                 .appendTo(menu)
                 .on('mousedown touchstart', function (evt) {
-                    $('#chat-input')[0].value += '@' + part.id + ' '
-                    setTimeout(() => {
-                        $('#chat-input').focus()
+                    ($('#chat-input')[0] as HTMLInputElement).value += '@' + part.id + ' '
+                    scheduler.setTimeout(() => {
+                        $('#chat-input').trigger('focus')
                     }, 1)
                 })
 
             if (gClient.isOwner() || gClient.permissions.chownAnywhere) {
                 if (!gClient.channel.settings.lobby) {
-                    $(`<div class="menu-item give-crown">${window.i18nextify.i18next.t('Give Crown')}</div>`)
+                    $(`<div class="menu-item give-crown">${globalThis.i18nextify.i18next.t('Give Crown')}</div>`)
                         .appendTo(menu)
                         .on('mousedown touchstart', function (evt) {
                             if (confirm('Give room ownership to ' + part.name + '?'))
                                 gClient.sendArray([{ m: 'chown', id: part.id }])
                         })
                 }
-                $(`<div class="menu-item kickban">${window.i18nextify.i18next.t('Kickban')}</div>`)
+                $(`<div class="menu-item kickban">${globalThis.i18nextify.i18next.t('Kickban')}</div>`)
                     .appendTo(menu)
                     .on('mousedown touchstart', function (evt) {
-                        var minutes = prompt('How many minutes? (0-300)', '30')
+                        let minutes: number | string = prompt('How many minutes? (0-300)', '30')
                         if (minutes === null) return
-                        minutes = parseFloat(minutes) || 0
+                        minutes = Number.parseFloat(minutes) || 0
                         var ms = minutes * 60 * 1000
                         gClient.sendArray([{ m: 'kickban', _id: part._id, ms: ms }])
                     })
             }
             if (gClient.permissions.siteBan) {
-                $(`<div class="menu-item site-ban">${window.i18nextify.i18next.t('Site Ban')}</div>`)
+                $(`<div class="menu-item site-ban">${globalThis.i18nextify.i18next.t('Site Ban')}</div>`)
                     .appendTo(menu)
                     .on('mousedown touchstart', function (evt) {
                         openModal('#siteban')
-                        setTimeout(function () {
+                        scheduler.setTimeout(function () {
                             $('#siteban input[name=id]').val(part._id)
                             $('#siteban input[name=reasonText]').val('Discrimination against others')
-                            $('#siteban input[name=reasonText]').attr('disabled', true)
+                            $('#siteban input[name=reasonText]').attr('disabled', 'true')
                             $('#siteban select[name=reasonSelect]').val('Discrimination against others')
                             $('#siteban input[name=durationNumber]').val(5)
-                            $('#siteban input[name=durationNumber]').attr('disabled', false)
+                            $('#siteban input[name=durationNumber]').attr('disabled', 'false')
                             $('#siteban select[name=durationUnit]').val('hours')
                             $('#siteban textarea[name=note]').val('')
                             $('#siteban p[name=errorText]').text('')
                             if (gClient.permissions.siteBanAnyReason) {
-                                $('#siteban select[name=reasonSelect] option[value=custom]').attr('disabled', false)
+                                $('#siteban select[name=reasonSelect] option[value=custom]').attr('disabled', 'false')
                             } else {
-                                $('#siteban select[name=reasonSelect] option[value=custom]').attr('disabled', true)
+                                $('#siteban select[name=reasonSelect] option[value=custom]').attr('disabled', 'true')
                             }
                         }, 100)
                     })
             }
             if (gClient.permissions.usersetOthers) {
-                $(`<div class="menu-item set-color">${window.i18nextify.i18next.t('Set Color')}</div>`)
+                $(`<div class="menu-item set-color">${globalThis.i18nextify.i18next.t('Set Color')}</div>`)
                     .appendTo(menu)
                     .on('mousedown touchstart', function (evt) {
                         var color = prompt('What color?', part.color)
@@ -2518,7 +2530,7 @@ $(function() {
                     })
             }
             if (gClient.permissions.usersetOthers) {
-                $(`<div class="menu-item set-name">${window.i18nextify.i18next.t('Set Name')}</div>`)
+                $(`<div class="menu-item set-name">${globalThis.i18nextify.i18next.t('Set Name')}</div>`)
                     .appendTo(menu)
                     .on('mousedown touchstart', function (evt) {
                         var name = prompt('What name?', part.name)
@@ -2581,14 +2593,14 @@ $(function() {
             this.onresize = function () {
                 self.position()
             }
-            window.addEventListener('resize', this.onresize)
+            globalThis.addEventListener('resize', this.onresize)
 
-            this.domElement.find('.x').click(function () {
+            this.domElement.find('.x').on('click', () => {
                 self.close()
             })
 
             if (this.duration > 0) {
-                setTimeout(function () {
+                scheduler.setTimeout(() => {
                     self.close()
                 }, this.duration)
             }
@@ -2608,7 +2620,7 @@ $(function() {
         }
 
         close() {
-            window.removeEventListener('resize', this.onresize)
+            globalThis.removeEventListener('resize', this.onresize)
             this.domElement.fadeOut(500, () => {
                 this.domElement.remove()
                 this.emit('close')
@@ -2624,30 +2636,30 @@ $(function() {
     var gKnowsYouCanUseKeyboard = false
     if (localStorage && localStorage.knowsYouCanUseKeyboard) gKnowsYouCanUseKeyboard = true
     if (!gKnowsYouCanUseKeyboard) {
-        window.gKnowsYouCanUseKeyboardTimeout = setTimeout(function () {
-            window.gKnowsYouCanUseKeyboardNotification = new SiteNotification({
-                title: window.i18nextify.i18next.t('Did you know!?!'),
-                text: window.i18nextify.i18next.t('You can play the piano with your keyboard, too.  Try it!'),
+        globalThis.gKnowsYouCanUseKeyboardTimeout = scheduler.setTimeout(function () {
+            globalThis.gKnowsYouCanUseKeyboardNotification = new SiteNotification({
+                title: globalThis.i18nextify.i18next.t('Did you know!?!'),
+                text: globalThis.i18nextify.i18next.t('You can play the piano with your keyboard, too.  Try it!'),
                 target: '#piano',
                 duration: 10000
             })
         }, 30000)
     }
 
-    if (window.localStorage) {
+    if (globalThis.localStorage) {
         if (localStorage.volume) {
             volume_slider.value = localStorage.volume
             gPiano.audio.setVolume(localStorage.volume)
             $('#volume-label').html(
-                window.i18nextify.i18next.t('Volume') +
+                globalThis.i18nextify.i18next.t('Volume') +
                     '<span translated>: ' +
                     Math.floor(gPiano.audio.volume * 100) +
                     '%</span>'
             )
         } else localStorage.volume = gPiano.audio.volume
 
-        window.gHasBeenHereBefore = localStorage.gHasBeenHereBefore || false
-        if (!gHasBeenHereBefore) {
+        globalThis.gHasBeenHereBefore = localStorage.gHasBeenHereBefore || false
+        if (!globalThis.gHasBeenHereBefore) {
             /*new SiteNotification({
         title: "Important Info",
         html: "If you were not on multiplayerpiano.net or mppclone.com previously, you are now! This is due to an issue with the owner of multiplayerpiano.com, who has added a bunch of things in the website's code that has affected the site negatively. Since they are using our servers, it's best that you use this website. If you have any issues, please join our <a href=\"https://discord.com/invite/338D2xMufC\">Discord</a> and let us know!",
@@ -2744,12 +2756,12 @@ $(function() {
         evt.stopPropagation()
         var room_name = 'Room' + Math.floor(Math.random() * 1000000000000)
         changeRoom(room_name, 'right', { visible: false })
-        setTimeout(function () {
+        scheduler.setTimeout(function () {
             new SiteNotification({
                 id: 'share',
-                title: window.i18nextify.i18next.t('Playing alone'),
+                title: globalThis.i18nextify.i18next.t('Playing alone'),
                 html:
-                    window.i18nextify.i18next.t(
+                    globalThis.i18nextify.i18next.t(
                         'You are playing alone in a room by yourself, but you can always invite friends by sending them the link.'
                     ) +
                     '<br><a href="' +
@@ -2787,15 +2799,15 @@ $(function() {
         }
     }
 
-    function openModal(selector, focus) {
+    function openModal(selector?: string, focus?: string) {
         if (chat) chat.blur()
         releaseKeyboard()
         $(document).on('keydown', modalHandleEsc)
         $('#modal #modals > *').hide()
         $('#modal').fadeIn(250)
         $(selector).show()
-        setTimeout(function () {
-            $(selector).find(focus).focus()
+        scheduler.setTimeout(function () {
+            $(selector).find(focus).trigger('focus')
         }, 100)
         gModal = selector
     }
@@ -2815,7 +2827,7 @@ $(function() {
     })
     ;(function () {
         function submit() {
-            var name = $('#new-room .text[name=name]').val()
+            var name = $('#new-room .text[name=name]').val() as string
             var settings = {
                 visible: $('#new-room .checkbox[name=visible]').is(':checked'),
                 chat: true
@@ -2823,12 +2835,12 @@ $(function() {
             $('#new-room .text[name=name]').val('')
             closeModal()
             changeRoom(name, 'right', settings)
-            setTimeout(function () {
+            scheduler.setTimeout(function () {
                 new SiteNotification({
                     id: 'share',
-                    title: window.i18nextify.i18next.t('Created a Room'),
+                    title: globalThis.i18nextify.i18next.t('Created a Room'),
                     html:
-                        window.i18nextify.i18next.t('You can invite friends to your room by sending them the link.') +
+                        globalThis.i18nextify.i18next.t('You can invite friends to your room by sending them the link.') +
                         '<br><a href="' +
                         location.href +
                         '">' +
@@ -2838,24 +2850,24 @@ $(function() {
                 })
             }, 1000)
         }
-        $('#new-room .submit').click(function (evt) {
+        $('#new-room .submit').on('click', () => {
             submit()
         })
-        $('#new-room .text[name=name]').keypress(function (evt) {
-            if (evt.keyCode == 13) {
+        $('#new-room .text[name=name]').on('keypress', e => {
+            if (e.keyCode == 13) {
                 submit()
-            } else if (evt.keyCode == 27) {
+            } else if (e.keyCode == 27) {
                 closeModal()
             } else {
                 return
             }
-            if (!gNoPreventDefault) evt.preventDefault()
-            evt.stopPropagation()
+            if (!gNoPreventDefault) e.preventDefault()
+            e.stopPropagation()
             return false
         })
     })()
 
-    function changeRoom(name, direction, settings, push) {
+    function changeRoom(name: string, direction?: string, settings?: ChannelSettings | {}, push?: any) {
         if (!settings) settings = {}
         if (!direction) direction = 'right'
         if (typeof push == 'undefined') push = true
@@ -2865,14 +2877,14 @@ $(function() {
         if (gClient.channel && gClient.channel._id === name) return
         if (push) {
             let url = "/?c=" + encodeURIComponent(name).replace("'", "%27");
-            if (window.history && history.pushState) {
+            if (globalThis.history && history.pushState) {
                 history.pushState(
                     { depth: (gHistoryDepth += 1), name: name },
                     "Piano > " + name,
                     url,
                 )
             } else {
-                window.location = url;
+                globalThis.location.search = url.replace('/', '');
                 return;
             }
         }
@@ -2884,7 +2896,7 @@ $(function() {
         $('#piano')
             .addClass('ease-out')
             .addClass('slide-' + opposite)
-        setTimeout(
+        scheduler.setTimeout(
             function () {
                 $('#piano')
                     .removeClass('ease-out')
@@ -2893,7 +2905,7 @@ $(function() {
             },
             (t += d)
         )
-        setTimeout(
+        scheduler.setTimeout(
             function () {
                 $('#piano')
                     .addClass('ease-in')
@@ -2901,7 +2913,7 @@ $(function() {
             },
             (t += d)
         )
-        setTimeout(
+        scheduler.setTimeout(
             function () {
                 $('#piano').removeClass('ease-in')
             },
@@ -2911,7 +2923,7 @@ $(function() {
 
     var gHistoryDepth = 0
     $(window).on('popstate', function (evt) {
-        var depth = evt.state ? evt.state.depth : 0
+        var depth = (evt as any).state ? (evt as any).state.depth : 0
         //if (depth == gHistoryDepth) return; // <-- forgot why I did that though...
         //yeah brandon idk why you did that either, but it's stopping the back button from changing rooms after 1 click so I commented it out
 
@@ -2928,17 +2940,17 @@ $(function() {
     ;(function () {
         function submit() {
             var set = {
-                name: $('#rename input[name=name]').val(),
-                color: $('#rename input[name=color]').val()
+                name: $('#rename input[name=name]').val() as string,
+                color: $('#rename input[name=color]').val() as string
             }
             //$("#rename .text[name=name]").val("");
             closeModal()
-            gClient.sendArray([{ m: 'userset', set: set }])
+            gClient.sendArray([{ m: 'userset', set }])
         }
-        $('#rename .submit').click(function (evt) {
+        $('#rename .submit').on('click', () => {
             submit()
         })
-        $('#rename .text[name=name]').keypress(function (evt) {
+        $('#rename .text[name=name]').on('keypress', function (evt) {
             if (evt.keyCode == 13) {
                 submit()
             } else if (evt.keyCode == 27) {
@@ -2955,7 +2967,7 @@ $(function() {
     //site-wide bans
     ;(function () {
         function submit() {
-            var msg = { m: 'siteban' }
+            var msg: any = { m: 'siteban' }
 
             msg.id = $('#siteban .text[name=id]').val()
 
@@ -2993,7 +3005,7 @@ $(function() {
                         factor = 1000 * 60 * 60 * 24 * 365
                         break
                 }
-                var duration = factor * parseFloat($('#siteban input[name=durationNumber]').val())
+                var duration = factor * Number.parseFloat($('#siteban input[name=durationNumber]').val() as string)
                 if (duration < 0) {
                     $('#siteban p[name=errorText]').text('Invalid duration.')
                     return
@@ -3027,28 +3039,28 @@ $(function() {
             closeModal()
             gClient.sendArray([msg])
         }
-        $('#siteban .submit').click(function (evt) {
+        $('#siteban .submit').on('click', () => {
             submit()
         })
-        $('#siteban select[name=reasonSelect]').change(function (evt) {
+        $('#siteban select[name=reasonSelect]').on('change', () => {
             if (this.value === 'custom') {
-                $('#siteban .text[name=reasonText]').attr('disabled', false)
+                $('#siteban .text[name=reasonText]').attr('disabled', 'false')
                 $('#siteban .text[name=reasonText]').val('')
             } else {
-                $('#siteban .text[name=reasonText]').attr('disabled', true)
+                $('#siteban .text[name=reasonText]').attr('disabled', 'true')
                 $('#siteban .text[name=reasonText]').val(this.value)
             }
         })
-        $('#siteban select[name=durationUnit]').change(function (evt) {
-            if (this.value === 'permanent') {
-                $('#siteban .text[name=durationNumber]').attr('disabled', true)
+        $('#siteban select[name=durationUnit]').on('change', e => {
+            if ((e.target as HTMLInputElement).value === 'permanent') {
+                $('#siteban .text[name=durationNumber]').attr('disabled', 'true')
             } else {
-                $('#siteban .text[name=durationNumber]').attr('disabled', false)
+                $('#siteban .text[name=durationNumber]').attr('disabled', 'false')
             }
         })
-        $('#siteban .text[name=id]').keypress(textKeypressEvent)
-        $('#siteban .text[name=reasonText]').keypress(textKeypressEvent)
-        $('#siteban .text[name=note]').keypress(textKeypressEvent)
+        $('#siteban .text[name=id]').on('keypress', textKeypressEvent)
+        $('#siteban .text[name=reasonText]').on('keypress', textKeypressEvent)
+        $('#siteban .text[name=note]').on('keypress', textKeypressEvent)
         function textKeypressEvent(evt) {
             if (evt.keyCode == 13) {
                 submit()
@@ -3072,10 +3084,10 @@ $(function() {
             gClient.start()
             closeModal()
         }
-        $('#account .logout-btn').click(function (evt) {
+        $('#account .logout-btn').on('click', function (evt) {
             logout()
         })
-        $('#account .login-discord').click(function (evt) {
+        $('#account .login-discord').on('click', function (evt) {
             location.replace(
                 encodeURI(
                     `https://discord.com/api/oauth2/authorize?client_id=926633278100877393&redirect_uri=${location.origin}/?callback=discord&response_type=code&scope=identify email`
@@ -3104,7 +3116,7 @@ $(function() {
             element.hide()
         } else {
             element.show()
-            let text = listFormat(typingUsers.values().map(id => `<span style='color: ${gClient.findParticipantById(id).color};'>${gClient.findParticipantById(id).name}</span>`))
+            let text = listFormat(Array.from(typingUsers.values()).map(id => `<span style='color: ${gClient.findParticipantById(id).color};'>${gClient.findParticipantById(id).name}</span>`))
             element.html(typingUsers.size == 1 ? text + ' is typing...' : text + ' are typing...')
         }
     }
@@ -3148,590 +3160,554 @@ $(function() {
                     break
             }
         }
-    })
-    var chat = do {
-        gClient.on('ch', function (msg) {
-            if (msg.ch.settings.chat) {
-                chat.show()
-            } else {
-                chat.hide()
-            }
-        })
-        gClient.on('disconnect', function (msg) {})
-        gClient.on('c', function (msg) {
-            chat.clear()
-            if (msg.c) {
-                for (var i = 0; i < msg.c.length; i++) {
-                    chat.receive(msg.c[i])
+    });
+    let chat = {
+        initialized: false,
+        inputHistoryIndex: 0,
+        messageCache: [],
+        inputHistory: [],
+        init() {
+            if (this.initialized)
+                return console.warn('MPP.chat.init() called more than once!')
+            this.initialized = true
+            gClient.on('ch', msg => {
+                if (msg.ch.settings.chat) {
+                    this.show()
+                } else {
+                    this.hide()
                 }
-            }
-        })
-        gClient.on('a', function (msg) {
-            chat.receive(msg)
-            gHyperMod.receiveMessage(msg)
-        })
-        gClient.on('dm', function (msg) {
-            chat.receive(msg)
-        })
+            })
+            gClient.on('disconnect', msg => {})
+            gClient.on('c', msg => {
+                this.clear()
+                if (msg.c) {
+                    for (var i = 0; i < msg.c.length; i++) {
+                        this.receive(msg.c[i])
+                    }
+                }
+            })
+            gClient.on('a', msg => {
+                this.receive(msg)
+                gHyperMod.receiveMessage(msg)
+            })
+            gClient.on('dm', msg => {
+                this.receive(msg)
+            })
 
-        $('#chat-input').on('focus', function (evt) {
-            releaseKeyboard()
-            $('#chat').addClass('chatting')
-            chat.scrollToBottom()
-        })
-        /*$("#chat input").on("blur", function(evt) {
-      captureKeyboard();
-      $("#chat").removeClass("chatting");
-      chat.scrollToBottom();
-    });*/
-        $(document).mousedown(function (evt) {
-            if (!$('#chat').has(evt.target).length > 0) {
-                chat.blur()
-            }
-        })
-        document.addEventListener('touchstart', function (event) {
-            for (var i in event.changedTouches) {
-                var touch = event.changedTouches[i]
-                if (!$('#chat').has(touch.target).length > 0) {
+            $('#chat-input').on('focus', () => {
+                releaseKeyboard()
+                $('#chat').addClass('chatting')
+                chat.scrollToBottom()
+            })
+            $(document).on('mousedown', e => {
+                if ($('#chat').has(e.target as unknown as HTMLElement).length <= 0) {
                     chat.blur()
                 }
-            }
-        })
-        $(document).on('keydown', function (evt) {
-            if ($('#chat').hasClass('chatting')) {
-                if (evt.keyCode == 27) {
-                    chat.blur()
-                    if (!gNoPreventDefault) evt.preventDefault()
-                    evt.stopPropagation()
-                } else if (evt.keyCode == 13) {
-                    $('#chat-input').focus()
+            })
+            document.addEventListener('touchstart', e => {
+                for (var i in e.changedTouches) {
+                    var touch = e.changedTouches[i]
+                    if ($('#chat').has(touch.target as unknown as HTMLElement).length <= 0) {
+                        chat.blur()
+                    }
                 }
-            } else if (!gModal && (evt.keyCode == 27 || evt.keyCode == 13)) {
-                $('#chat-input').focus()
-            }
-        })
-        $('#chat-input').on('input', e => {
-            if (!gClient.isConnected()) return
-            if (!(gHyperMod.lsSettings.showUsersWhenTyping ?? true)) return
-            if (e.target.value.length == 0) {
-                stopTyping()
-                if (gTypingTimeout) {
+            })
+            $(document).on('keydown', e => {
+                if ($('#chat').hasClass('chatting')) {
+                    if (e.code === 'Escape') {
+                        chat.blur()
+                        if (!gNoPreventDefault) e.preventDefault()
+                        e.stopPropagation()
+                    } else if (e.code === 'Enter') {
+                        $('#chat-input').trigger('focus')
+                    }
+                } else if (!gModal && (e.code == 'Escape' || e.code == 'Enter')) {
+                    $('#chat-input').trigger('focus')
+                }
+            })
+            $('#chat-input').on('input', e => {
+                if (!gClient.isConnected()) return
+                if (!(gHyperMod.lsSettings.showUsersWhenTyping ?? true)) return
+                if ((e.target as HTMLInputElement).value.length == 0) {
+                    stopTyping()
+                    if (gTypingTimeout) {
+                        clearTimeout(gTypingTimeout)
+                        gTypingTimeout = undefined
+                    }
+                    return updateTypingStatus()
+                }
+                if (!gTypingTimeout) {
+                    startTyping()
+                    updateTypingStatus()
+                } else {
                     clearTimeout(gTypingTimeout)
                     gTypingTimeout = undefined
                 }
-                return updateTypingStatus()
-            }
-            if (!gTypingTimeout) {
-                startTyping()
-                updateTypingStatus()
-            } else {
-                clearTimeout(gTypingTimeout)
-                gTypingTimeout = undefined
-            }
-            gTypingTimeout = setTimeout(() => {
-                stopTyping()
-                updateTypingStatus()
-                gTypingTimeout = undefined
-            }, 2000)
-        })
-        $('#chat-input').on('keydown', e => {
-            switch (e.code) {
-                case 'ArrowUp': // up
-                    if (chat.inputHistoryIndex <= 0)
-                        return
-                    chat.inputHistoryIndex -= 1
-                    $(e.target).val(chat.inputHistory[chat.inputHistoryIndex] ?? '')
-                    if (!gNoPreventDefault) e.preventDefault()
-                    e.stopPropagation()
-                    break
-                case 'ArrowDown': // down
-                    if (chat.inputHistoryIndex >= chat.inputHistory.length)
-                        return
-                    chat.inputHistoryIndex += 1
-                    $(e.target).val(chat.inputHistory[chat.inputHistoryIndex] ?? '')
-                    if (!gNoPreventDefault) e.preventDefault()
-                    e.stopPropagation()
-                    break
-                case 'Enter':
-                    var message = $(e.target).val()
-                    if (message.length == 0) {
-                        if (gIsDming) {
-                            chat.endDM()
-                        }
-                        if (gIsReplying) {
-                            chat.cancelReply()
-                        }
-                        if (gHyperMod.lsSettings.messageBlur ?? true)
-                            setTimeout(function () {
-                                chat.blur()
-                            }, 100)
-                    } else {
-                        if (
-                            (
-                                !(gHyperMod.lsSettings.showChatCommands ?? true) || 
-                                !(gClient.isConnected() && gClient.channel)
-                            ) && 
-                            message.startsWith(gHyperMod.prefix) && 
-                            message !== gHyperMod.prefix
-                        ) {
-                            let msg = {
-                                m: 'a',
-                                a: message,
-                                p: { ...gClient.getOwnParticipant() },
-                                t: Date.now()
+                gTypingTimeout = scheduler.setTimeout(() => {
+                    stopTyping()
+                    updateTypingStatus()
+                    gTypingTimeout = undefined
+                }, 2000)
+            })
+            $('#chat-input').on('keydown', e => {
+                switch (e.code) {
+                    case 'ArrowUp': // up
+                        if (chat.inputHistoryIndex <= 0)
+                            return
+                        chat.inputHistoryIndex -= 1
+                        $(e.target).val(chat.inputHistory[chat.inputHistoryIndex] ?? '')
+                        if (!gNoPreventDefault) e.preventDefault()
+                        e.stopPropagation()
+                        break
+                    case 'ArrowDown': // down
+                        if (chat.inputHistoryIndex >= chat.inputHistory.length)
+                            return
+                        chat.inputHistoryIndex += 1
+                        $(e.target).val(chat.inputHistory[chat.inputHistoryIndex] ?? '')
+                        if (!gNoPreventDefault) e.preventDefault()
+                        e.stopPropagation()
+                        break
+                    case 'Enter':
+                        var message = $(e.target).val() as string
+                        if (message.length == 0) {
+                            if (gIsDming) {
+                                chat.endDM()
                             }
-                            chat.receive(msg)
-                            gHyperMod.receiveMessage(msg)
+                            if (gIsReplying) {
+                                chat.cancelReply()
+                            }
+                            if (gHyperMod.lsSettings.messageBlur ?? true)
+                                scheduler.setTimeout(function () {
+                                    chat.blur()
+                                }, 100)
                         } else {
-                            if (gClient.isConnected() && gClient.channel)
-                                chat.send(message)
-                            else {
-                                let msg = {
+                            if (
+                                (
+                                    !(gHyperMod.lsSettings.showChatCommands ?? true) || 
+                                    !(gClient.isConnected() && gClient.channel)
+                                ) && 
+                                message.startsWith(gHyperMod.prefix) && 
+                                message !== gHyperMod.prefix
+                            ) {
+                                let msg: any = {
                                     m: 'a',
                                     a: message,
                                     p: { ...gClient.getOwnParticipant() },
                                     t: Date.now()
                                 }
                                 chat.receive(msg)
+                                gHyperMod.receiveMessage(msg)
+                            } else {
+                                if (gClient.isConnected() && gClient.channel)
+                                    chat.send(message)
+                                else {
+                                    let msg: any = {
+                                        m: 'a',
+                                        a: message,
+                                        p: { ...gClient.getOwnParticipant() },
+                                        t: Date.now()
+                                    }
+                                    chat.receive(msg)
+                                }
                             }
+                            chat.inputHistory.push(message)
+                            chat.inputHistoryIndex = chat.inputHistory.length
+                            $(e.target).val('')
+                            stopTyping()
+                            updateTypingStatus()
+                            if (gHyperMod.lsSettings.messageBlur ?? true)
+                                scheduler.setTimeout(function () {
+                                    chat.blur()
+                                }, 100)
                         }
-                        chat.inputHistory.push(message)
-					    chat.inputHistoryIndex = chat.inputHistory.length
-                        $(e.target).val('')
-                        stopTyping()
-                        updateTypingStatus()
-                        if (gHyperMod.lsSettings.messageBlur ?? true)
-                            setTimeout(function () {
-                                chat.blur()
-                            }, 100)
-                    }
-                    if (!gNoPreventDefault) e.preventDefault()
-                    e.stopPropagation()
-                    break
-                case 'Escape':
-                    chat.blur()
-                    if (!gNoPreventDefault) e.preventDefault()
-                    e.stopPropagation()
-                    break
-                case 'Tab':
-                    if (!gNoPreventDefault) e.preventDefault()
-                    e.stopPropagation()
-                    break
+                        if (!gNoPreventDefault) e.preventDefault()
+                        e.stopPropagation()
+                        break
+                    case 'Escape':
+                        chat.blur()
+                        if (!gNoPreventDefault) e.preventDefault()
+                        e.stopPropagation()
+                        break
+                    case 'Tab':
+                        if (!gNoPreventDefault) e.preventDefault()
+                        e.stopPropagation()
+                        break
+                }
+            })
+            var messageCache = [];
+        },
+        startDM: function (part) {
+            if (!this.initialized)
+                return
+            gIsDming = true
+            gDmParticipant = part;
+            ($('#chat-input')[0] as HTMLInputElement).placeholder = 'Direct messaging ' + part.name + '.'
+        },
+        endDM: function () {
+            if (!this.initialized)
+                return
+            gIsDming = false;
+            ($('#chat-input')[0] as HTMLInputElement).placeholder = globalThis.i18nextify.i18next.t('You can chat with this thing.')
+        },
+        startReply: function (part, id) {
+            if (!this.initialized)
+                return
+            $(`#msg-${gMessageId}`).css({
+                'background-color': 'unset',
+                border: '1px solid #00000000'
+            })
+            gIsReplying = true
+            gReplyParticipant = part
+            gMessageId = id;
+            ($('#chat-input')[0] as HTMLInputElement).placeholder = `Replying to ${part.name}`
+        },
+        startDmReply: function (part, id) {
+            if (!this.initialized)
+                return
+            $(`#msg-${gMessageId}`).css({
+                'background-color': 'unset',
+                border: '1px solid #00000000'
+            })
+            gIsReplying = true
+            gIsDming = true
+            gMessageId = id
+            gReplyParticipant = part
+            gDmParticipant = part;
+            ($('#chat-input')[0] as HTMLInputElement).placeholder = `Replying to ${part.name} in a DM.`
+        },
+        cancelReply: function () {
+            if (!this.initialized)
+                return
+            if (gIsDming) gIsDming = false
+            gIsReplying = false
+            $(`#msg-${gMessageId}`).css({
+                'background-color': 'unset',
+                border: '1px solid #00000000'
+            });
+            ($('#chat-input')[0] as HTMLInputElement).placeholder = globalThis.i18nextify.i18next.t(`You can chat with this thing.`)
+        },
+        show: function () {
+            if (!this.initialized)
+                return
+            $('#chat').fadeIn()
+        },
+        hide: function () {
+            if (!this.initialized)
+                return
+            $('#chat').fadeOut()
+        },
+        clear: function () {
+            if (!this.initialized)
+                return
+            $('#chat li').remove()
+        },
+        scrollToBottom: function () {
+            if (!this.initialized)
+                return
+            var ele = $('#chat ul').get(0)
+            ele.scrollTop = ele.scrollHeight - ele.clientHeight
+        },
+        blur: function () {
+            if (!this.initialized)
+                return
+            if ($('#chat').hasClass('chatting')) {
+                $('#chat-input').get(0).blur()
+                $('#chat').removeClass('chatting')
+                chat.scrollToBottom()
+                captureKeyboard()
             }
-        })
-
-        // Optionally show a warning when clicking links
-        /*$("#chat ul").on("click", ".chatLink", function(ev) {
-      var $s = $(this);
-
-      if(gWarnOnLinks) {
-        if(!$s.hasClass("clickedOnce")) {
-          $s.addClass("clickedOnce");
-          var id = setTimeout(() => $s.removeClass("clickedOnce"), 2000);
-          $s.data("clickTimeout", id)
-          return false;
-        } else {
-          console.log("a")
-          $s.removeClass("clickedOnce");
-          var id = $s.data("clickTimeout")
-          if(id !== void 0) {
-            clearTimeout(id)
-            $s.removeData("clickTimeout")
-          }
-        }
-      }
-    });*/
-        var messageCache = [];
-
-        ({
-            inputHistoryIndex: 0,
-            inputHistory: [],
-            startDM: function (part) {
-                gIsDming = true
-                gDmParticipant = part
-                $('#chat-input')[0].placeholder = 'Direct messaging ' + part.name + '.'
-            },
-
-            endDM: function () {
-                gIsDming = false
-                $('#chat-input')[0].placeholder = window.i18nextify.i18next.t('You can chat with this thing.')
-            },
-
-            startReply: function (part, id) {
-                $(`#msg-${gMessageId}`).css({
-                    'background-color': 'unset',
-                    border: '1px solid #00000000'
-                })
-                gIsReplying = true
-                gReplyParticipant = part
-                gMessageId = id
-                $('#chat-input')[0].placeholder = `Replying to ${part.name}`
-            },
-
-            startDmReply: function (part, id) {
-                $(`#msg-${gMessageId}`).css({
-                    'background-color': 'unset',
-                    border: '1px solid #00000000'
-                })
-                gIsReplying = true
-                gIsDming = true
-                gMessageId = id
-                gReplyParticipant = part
-                gDmParticipant = part
-                $('#chat-input')[0].placeholder = `Replying to ${part.name} in a DM.`
-            },
-
-            cancelReply: function () {
-                if (gIsDming) gIsDming = false
-                gIsReplying = false
-                $(`#msg-${gMessageId}`).css({
-                    'background-color': 'unset',
-                    border: '1px solid #00000000'
-                })
-                $('#chat-input')[0].placeholder = window.i18nextify.i18next.t(`You can chat with this thing.`)
-            },
-
-            show: function () {
-                $('#chat').fadeIn()
-            },
-
-            hide: function () {
-                $('#chat').fadeOut()
-            },
-
-            clear: function () {
-                $('#chat li').remove()
-            },
-
-            scrollToBottom: function () {
-                var ele = $('#chat ul').get(0)
-                ele.scrollTop = ele.scrollHeight - ele.clientHeight
-            },
-
-            blur: function () {
-                if ($('#chat').hasClass('chatting')) {
-                    $('#chat-input').get(0).blur()
-                    $('#chat').removeClass('chatting')
-                    chat.scrollToBottom()
-                    captureKeyboard()
-                }
-            },
-
-            send: function (message) {
-                if (gIsReplying) {
-                    if (gIsDming) {
-                        gClient.sendArray([
-                            {
-                                m: 'dm',
-                                reply_to: gMessageId,
-                                _id: gReplyParticipant._id,
-                                message
-                            }
-                        ])
-                        setTimeout(() => {
-                            MPP.chat.cancelReply()
-                        }, 100)
-                    } else {
-                        gClient.sendArray([
-                            {
-                                m: 'a',
-                                reply_to: gMessageId,
-                                _id: gReplyParticipant._id,
-                                message
-                            }
-                        ])
-                        setTimeout(() => {
-                            MPP.chat.cancelReply()
-                        }, 100)
-                    }
-                } else {
-                    if (gIsDming) {
-                        gClient.sendArray([{ m: 'dm', _id: gDmParticipant._id, message }])
-                    } else {
-                        gClient.sendArray([{ m: 'a', message }])
-                    }
-                }
-            },
-
-            receive: function (msg) {
-                if (msg.m === 'dm') {
-                    if (gChatMutes.indexOf(msg.sender._id) != -1) return
-                } else {
-                    if (gChatMutes.indexOf(msg.p._id) != -1) return
-                }
-
-                //construct string for creating list element
-
-                var liString = msg.id ? `<li id="msg-${msg.id}">` : `<li>`
-
-                var isSpecialDm = false
-
-                if (msg.id)
-                    if (msg.m === 'dm') {
-                        if (msg.sender._id === gClient.user._id || msg.recipient._id === gClient.user._id) {
-                            liString += `<span class="reply"/>`
+        },
+        send(message: string) {
+            if (!this.initialized)
+                return
+            if (gIsReplying) {
+                if (gIsDming) {
+                    gClient.sendArray([
+                        {
+                            m: 'dm',
+                            reply_to: gMessageId,
+                            _id: gReplyParticipant._id,
+                            message
                         }
-                    } else {
+                    ])
+                    scheduler.setTimeout(() => {
+                        chat.cancelReply()
+                    }, 100)
+                } else {
+                    gClient.sendArray([
+                        {
+                            m: 'a',
+                            reply_to: gMessageId,
+                            _id: gReplyParticipant._id,
+                            message
+                        }
+                    ])
+                    scheduler.setTimeout(() => {
+                        this.cancelReply()
+                    }, 100)
+                }
+            } else {
+                if (gIsDming) {
+                    gClient.sendArray([{ m: 'dm', _id: gDmParticipant._id, message }])
+                } else {
+                    gClient.sendArray([{ m: 'a', message }])
+                }
+            }
+        },
+        receive(msg: IncomingMessage['a'] | IncomingMessage['dm']) {
+            if (!this.initialized)
+                return
+            if (msg.m === 'dm') {
+                if (gChatMutes.indexOf(msg.sender._id) != -1) return
+            } else {
+                if (gChatMutes.indexOf(msg.p._id) != -1) return
+            }
+            //construct string for creating list element
+            var liString = msg.id ? `<li id="msg-${msg.id}">` : `<li>`
+            var isSpecialDm = false
+            if (msg.id)
+                if (msg.m === 'dm') {
+                    if (msg.sender._id === gClient.user._id || msg.recipient._id === gClient.user._id) {
                         liString += `<span class="reply"/>`
                     }
-
-                if (gShowTimestampsInChat) liString += '<span class="timestamp"/>'
-
-                if (msg.m === 'dm') {
-                    if (msg.sender._id === gClient.user._id) {
-                        //sent dm
-                        liString += '<span class="sentDm"/>'
-                    } else if (msg.recipient._id === gClient.user._id) {
-                        //received dm
-                        liString += '<span class="receivedDm"/>'
-                    } else {
-                        //someone else's dm
-                        liString += '<span class="otherDm"/>'
-                        isSpecialDm = true
-                    }
-                }
-
-                if (isSpecialDm) {
-                    if (gShowIdsInChat) liString += '<span class="id"/>'
-                    liString += '<span class="name"/><span class="dmArrow"/>'
-                    if (gShowIdsInChat) liString += '<span class="id2"/>'
-                    liString += '<span class="name2"/><span class="message"/>'
                 } else {
-                    if (gShowIdsInChat) liString += '<span class="id"/>'
-                    liString += '<span class="name"/>'
-                    if (msg.r) liString += `<span class="replyLink"/>`
-                    liString += '<span class="message"/>'
+                    liString += `<span class="reply"/>`
                 }
-
-                var li = $(liString)
-                if (msg.id)
-                    li.find(`.reply`).text('➦')
-
-                if (msg.r) {
-                    var repliedMsg = messageCache.find((e) => e.id === msg.r)
-                    if (!tabIsActive) {
-                        if (repliedMsg?.p?._id === gClient.user._id) {
-                            document.title = `You have received a reply!`
-                            if ((gHyperMod.lsSettings.sendNotifications ?? true) && Notification.permission === 'granted')
-                                new Notification(`You have received a reply!`, {
-                                    body: `${msg.p.name} has replied to your message.`,
-                                })
-                            youreReplied = true
-                        }
-                    }
-                    if (repliedMsg) {
-                        li.find('.replyLink').text(`➥ ${repliedMsg.m === 'dm' ? repliedMsg.sender.name : repliedMsg.p.name}`)
-                        li.find('.replyLink').css({
-                            background: `${
-                                (repliedMsg?.m === 'dm' ? repliedMsg?.sender?.color : repliedMsg?.p?.color) ?? 'gray'
-                            }`
-                        })
-                        li.find('.replyLink').on('click', (evt) => {
-                            $('#chat-input').focus()
-                            document.getElementById(`msg-${repliedMsg?.id}`).scrollIntoView({ behavior: 'smooth' })
-                            $(`#msg-${repliedMsg?.id}`).css({
-                                border: `1px solid ${
-                                    repliedMsg?.m === 'dm' ? repliedMsg.sender?.color : repliedMsg.p?.color
-                                }80`,
-                                'background-color': `${
-                                    repliedMsg?.m === 'dm' ? repliedMsg.sender?.color : repliedMsg.p?.color
-                                }20`
-                            })
-                            setTimeout(() => {
-                                $(`#msg-${repliedMsg?.id}`).css({
-                                    'background-color': 'unset',
-                                    border: '1px solid #00000000'
-                                })
-                            }, 5000)
-                        })
-                    } else {
-                        li.find('.replyLink').text('➥ Unknown Message')
-                        li.find('.replyLink').css({ background: 'gray' })
-                    }
-                }
-
-                //prefix before dms so people know it's a dm
-                if (msg.m === 'dm') {
-                    if (msg.sender._id === gClient.user._id) {
-                        //sent dm
-                        li.find('.sentDm').text('To')
-                        li.find('.sentDm').css('color', '#ff55ff')
-                    } else if (msg.recipient._id === gClient.user._id) {
-                        //received dm
-                        li.find('.receivedDm').text('From')
-                        li.find('.receivedDm').css('color', '#ff55ff')
-                    } else {
-                        //someone else's dm
-                        li.find('.otherDm').text('DM')
-                        li.find('.otherDm').css('color', '#ff55ff')
-
-                        li.find('.dmArrow').text('->')
-                        li.find('.dmArrow').css('color', '#ff55ff')
-                    }
-                }
-
-                if (gShowTimestampsInChat) {
-                    li.find('.timestamp').text(new Date(msg.t).toLocaleTimeString())
-                }
-
-                let message = parseMarkdown(parseContent(msg.a), parseUrl).replace(/@([\da-f]{24})/g, (match, id) => {
-                    let user = gClient.ppl[id]
-                    if (user) {
-                        let nick = parseContent(user.name)
-                        if (user.id === gClient.getOwnParticipant().id) {
-                            if (!tabIsActive) {
-                                youreMentioned = true
-                                document.title = window.i18nextify.i18next.t('You were mentioned!')
-                                if ((gHyperMod.lsSettings.sendNotifications ?? true) && Notification.permission === 'granted')
-                                    new Notification(window.i18nextify.i18next.t('You were mentioned!'), {
-                                        body: `${msg.p.name} has mentioned you in chat.`,
-                                    })
-                            }
-                            return `<span class="mention" style="background-color: ${user.color};">${nick}</span>`
-                        } else return `@${nick}`
-                    } else return match
-                })
-
-                //apply names, colors, ids
-                li.find('.message').html(message)
-
-                if (msg.m === 'dm') {
-                    if (!gNoChatColors) li.find('.message').css('color', msg.sender.color || 'white')
-                    if (gShowIdsInChat) {
-                        if (msg.sender._id === gClient.user._id) {
-                            li.find('.id').text(msg.recipient._id.substring(0, 6))
-                        } else {
-                            li.find('.id').text(msg.sender._id.substring(0, 6))
-                        }
-                    }
-
-                    if (msg.sender._id === gClient.user._id) {
-                        //sent dm
-                        if (!gNoChatColors) li.find('.name').css('color', msg.recipient.color || 'white')
-                        li.find('.name').text(msg.recipient.name + ':')
-                        if (gShowChatTooltips) li[0].title = msg.recipient._id
-                    } else if (msg.recipient._id === gClient.user._id) {
-                        //received dm
-                        if (!gNoChatColors) li.find('.name').css('color', msg.sender.color || 'white')
-                        li.find('.name').text(msg.sender.name + ':')
-
-                        if (gShowChatTooltips) li[0].title = msg.sender._id
-                    } else {
-                        //someone else's dm
-                        if (!gNoChatColors) li.find('.name').css('color', msg.sender.color || 'white')
-                        if (!gNoChatColors) li.find('.name2').css('color', msg.recipient.color || 'white')
-                        li.find('.name').text(msg.sender.name)
-                        li.find('.name2').text(msg.recipient.name + ':')
-
-                        if (gShowIdsInChat) li.find('.id').text(msg.sender._id.substring(0, 6))
-                        if (gShowIdsInChat) li.find('.id2').text(msg.recipient._id.substring(0, 6))
-
-                        if (gShowChatTooltips) li[0].title = msg.sender._id
-                    }
+            if (gShowTimestampsInChat) liString += '<span class="timestamp"/>'
+            if (msg.m === 'dm') {
+                if (msg.sender._id === gClient.user._id) {
+                    //sent dm
+                    liString += '<span class="sentDm"/>'
+                } else if (msg.recipient._id === gClient.user._id) {
+                    //received dm
+                    liString += '<span class="receivedDm"/>'
                 } else {
-                    if (!gNoChatColors) li.find('.message').css('color', msg.p.color || 'white')
-                    if (!gNoChatColors) li.find('.name').css('color', msg.p.color || 'white')
-
-                    li.find('.name').text(msg.p.name + ':')
-
-                    if (!gNoChatColors) li.find('.message').css('color', msg.p.color || 'white')
-                    if (gShowIdsInChat) li.find('.id').text(msg.p._id.substring(0, 6))
-
-                    if (gShowChatTooltips) li[0].title = msg.p._id
-                }
-
-                //Adds copying _ids on click in chat
-                li.find('.id').on('click', (evt) => {
-                    if (msg.m === 'dm') {
-                        navigator.clipboard.writeText(msg.sender._id === gClient.user._id ? msg.recipient._id : msg.sender._id)
-                        li.find('.id').text('Copied')
-                        setTimeout(() => {
-                            li.find('.id').text(
-                                (msg.sender._id === gClient.user._id ? msg.recipient._id : msg.sender._id).substring(0, 6)
-                            )
-                        }, 2500)
-                    } else {
-                        navigator.clipboard.writeText(msg.p._id)
-                        li.find('.id').text('Copied')
-                        setTimeout(() => {
-                            li.find('.id').text(msg.p._id.substring(0, 6))
-                        }, 2500)
-                    }
-                })
-                li.find('.id2').on('click', (evt) => {
-                    navigator.clipboard.writeText(msg.recipient._id)
-                    li.find('.id2').text('Copied')
-                    setTimeout(() => {
-                        li.find('.id2').text(msg.recipient._id.substring(0, 6))
-                    }, 2500)
-                })
-
-                //Reply button click event listener
-                li.find('.reply').on('click', (evt) => {
-                    if (msg.m !== 'dm') {
-                        MPP.chat.startReply(msg.p, msg.id, msg.a)
-                        setTimeout(() => {
-                            $(`#msg-${msg.id}`).css({
-                                border: `1px solid ${msg?.m === 'dm' ? msg.sender?.color : msg.p?.color}80`,
-                                'background-color': `${msg?.m === 'dm' ? msg.sender?.color : msg.p?.color}20`
-                            })
-                        }, 100)
-                        setTimeout(() => {
-                            $('#chat-input').focus()
-                        }, 100)
-                    } else {
-                        if (msg.m === 'dm') {
-                            let replyingTo = msg.sender._id === gClient.user._id ? msg.recipient : msg.sender
-                            if (gClient.ppl[replyingTo._id]) {
-                                MPP.chat.startDmReply(replyingTo, msg.id)
-                                setTimeout(() => {
-                                    $(`#msg-${msg.id}`).css({
-                                        border: `1px solid ${msg?.m === 'dm' ? msg.sender?.color : msg.p?.color}80`,
-                                        'background-color': `${msg?.m === 'dm' ? msg.sender?.color : msg.p?.color}20`
-                                    })
-                                }, 100)
-                                setTimeout(() => {
-                                    $('#chat-input').focus()
-                                }, 100)
-                            } else {
-                                new SiteNotification({
-                                    target: '#piano',
-                                    title: 'User not found.',
-                                    text: 'The user who you are trying to reply to in a DM is not found, so a DM could not be started.'
-                                })
-                            }
-                        }
-                    }
-                })
-
-                //put list element in chat
-
-                $('#chat ul').append(li)
-                messageCache.push(msg)
-
-                var eles = $('#chat ul li').get()
-                for (var i = 1; i <= 50 && i <= eles.length; i++) {
-                    eles[eles.length - i].style.opacity = 1.0 - i * 0.03
-                }
-                if (eles.length > 50) {
-                    eles[0].style.display = 'none'
-                }
-                if (eles.length > 256) {
-                    messageCache.shift()
-                    $(eles[0]).remove()
-                }
-
-                // scroll to bottom if not "chatting" or if not scrolled up
-                if (!$('#chat').hasClass('chatting')) {
-                    chat.scrollToBottom()
-                } else {
-                    var ele = $('#chat ul').get(0)
-                    if (ele.scrollTop > ele.scrollHeight - ele.offsetHeight - 50) chat.scrollToBottom()
+                    //someone else's dm
+                    liString += '<span class="otherDm"/>'
+                    isSpecialDm = true
                 }
             }
-        })
+            if (isSpecialDm) {
+                if (gShowIdsInChat) liString += '<span class="id"/>'
+                liString += '<span class="name"/><span class="dmArrow"/>'
+                if (gShowIdsInChat) liString += '<span class="id2"/>'
+                liString += '<span class="name2"/><span class="message"/>'
+            } else {
+                if (gShowIdsInChat) liString += '<span class="id"/>'
+                liString += '<span class="name"/>'
+                if (msg.r) liString += `<span class="replyLink"/>`
+                liString += '<span class="message"/>'
+            }
+            var li = $(liString)
+            if (msg.id)
+                li.find(`.reply`).text('➦')
+            if (msg.r) {
+                var repliedMsg = this.messageCache.find(e => e.id === msg.r)
+                if (!tabIsActive) {
+                    if (repliedMsg?.p?._id === gClient.user._id) {
+                        document.title = `You have received a reply!`
+                        if ((gHyperMod.lsSettings.sendNotifications ?? true) && Notification.permission === 'granted')
+                            new Notification(`You have received a reply!`, {
+                                body: `${msg.m === 'dm' ? msg.sender.name : msg.p.name} has replied to your message.`,
+                            })
+                        youreReplied = true
+                    }
+                }
+                if (repliedMsg) {
+                    li.find('.replyLink').text(`➥ ${repliedMsg.m === 'dm' ? repliedMsg.sender.name : repliedMsg.p.name}`)
+                    li.find('.replyLink').css({
+                        background: `${
+                            (repliedMsg?.m === 'dm' ? repliedMsg?.sender?.color : repliedMsg?.p?.color) ?? 'gray'
+                        }`
+                    })
+                    li.find('.replyLink').on('click', (evt) => {
+                        $('#chat-input').focus()
+                        document.getElementById(`msg-${repliedMsg?.id}`).scrollIntoView({ behavior: 'smooth' })
+                        $(`#msg-${repliedMsg?.id}`).css({
+                            border: `1px solid ${
+                                repliedMsg?.m === 'dm' ? repliedMsg.sender?.color : repliedMsg.p?.color
+                            }80`,
+                            'background-color': `${
+                                repliedMsg?.m === 'dm' ? repliedMsg.sender?.color : repliedMsg.p?.color
+                            }20`
+                        })
+                        scheduler.setTimeout(() => {
+                            $(`#msg-${repliedMsg?.id}`).css({
+                                'background-color': 'unset',
+                                border: '1px solid #00000000'
+                            })
+                        }, 5000)
+                    })
+                } else {
+                    li.find('.replyLink').text('➥ Unknown Message')
+                    li.find('.replyLink').css({ background: 'gray' })
+                }
+            }
+            //prefix before dms so people know it's a dm
+            if (msg.m === 'dm') {
+                if (msg.sender._id === gClient.user._id) {
+                    //sent dm
+                    li.find('.sentDm').text('To')
+                    li.find('.sentDm').css('color', '#ff55ff')
+                } else if (msg.recipient._id === gClient.user._id) {
+                    //received dm
+                    li.find('.receivedDm').text('From')
+                    li.find('.receivedDm').css('color', '#ff55ff')
+                } else {
+                    //someone else's dm
+                    li.find('.otherDm').text('DM')
+                    li.find('.otherDm').css('color', '#ff55ff')
+                    li.find('.dmArrow').text('->')
+                    li.find('.dmArrow').css('color', '#ff55ff')
+                }
+            }
+            if (gShowTimestampsInChat) {
+                li.find('.timestamp').text(new Date(msg.t).toLocaleTimeString())
+            }
+            let message = parseMarkdown(parseContent(msg.a), parseUrl).replace(/@([\da-f]{24})/g, (match, id) => {
+                let user = gClient.ppl[id]
+                if (user) {
+                    let nick = parseContent(user.name)
+                    if (user.id === gClient.getOwnParticipant().id) {
+                        if (!tabIsActive) {
+                            youreMentioned = true
+                            document.title = globalThis.i18nextify.i18next.t('You were mentioned!')
+                            if ((gHyperMod.lsSettings.sendNotifications ?? true) && Notification.permission === 'granted')
+                                new Notification(globalThis.i18nextify.i18next.t('You were mentioned!'), {
+                                    body: `${msg.m === 'dm' ? msg.sender.name : msg.p.name} has mentioned you in chat.`,
+                                })
+                        }
+                        return `<span class="mention" style="background-color: ${user.color};">${nick}</span>`
+                    } else return `@${nick}`
+                } else return match
+            })
+            //apply names, colors, ids
+            li.find('.message').html(message)
+            if (msg.m === 'dm') {
+                if (!gNoChatColors) li.find('.message').css('color', msg.sender.color || 'white')
+                if (gShowIdsInChat) {
+                    if (msg.sender._id === gClient.user._id) {
+                        li.find('.id').text(msg.recipient._id.substring(0, 6))
+                    } else {
+                        li.find('.id').text(msg.sender._id.substring(0, 6))
+                    }
+                }
+                if (msg.sender._id === gClient.user._id) {
+                    //sent dm
+                    if (!gNoChatColors) li.find('.name').css('color', msg.recipient.color || 'white')
+                    li.find('.name').text(msg.recipient.name + ':')
+                    if (gShowChatTooltips) li[0].title = msg.recipient._id
+                } else if (msg.recipient._id === gClient.user._id) {
+                    //received dm
+                    if (!gNoChatColors) li.find('.name').css('color', msg.sender.color || 'white')
+                    li.find('.name').text(msg.sender.name + ':')
+                    if (gShowChatTooltips) li[0].title = msg.sender._id
+                } else {
+                    //someone else's dm
+                    if (!gNoChatColors) li.find('.name').css('color', msg.sender.color || 'white')
+                    if (!gNoChatColors) li.find('.name2').css('color', msg.recipient.color || 'white')
+                    li.find('.name').text(msg.sender.name)
+                    li.find('.name2').text(msg.recipient.name + ':')
+                    if (gShowIdsInChat) li.find('.id').text(msg.sender._id.substring(0, 6))
+                    if (gShowIdsInChat) li.find('.id2').text(msg.recipient._id.substring(0, 6))
+                    if (gShowChatTooltips) li[0].title = msg.sender._id
+                }
+            } else {
+                if (!gNoChatColors) li.find('.message').css('color', msg.p.color || 'white')
+                if (!gNoChatColors) li.find('.name').css('color', msg.p.color || 'white')
+                li.find('.name').text(msg.p.name + ':')
+                if (!gNoChatColors) li.find('.message').css('color', msg.p.color || 'white')
+                if (gShowIdsInChat) li.find('.id').text(msg.p._id.substring(0, 6))
+                if (gShowChatTooltips) li[0].title = msg.p._id
+            }
+            //Adds copying _ids on click in chat
+            li.find('.id').on('click', (evt) => {
+                if (msg.m === 'dm') {
+                    navigator.clipboard.writeText(msg.sender._id === gClient.user._id ? msg.recipient._id : msg.sender._id)
+                    li.find('.id').text('Copied')
+                    scheduler.setTimeout(() => {
+                        li.find('.id').text(
+                            (msg.sender._id === gClient.user._id ? msg.recipient._id : msg.sender._id).substring(0, 6)
+                        )
+                    }, 2500)
+                } else {
+                    navigator.clipboard.writeText(msg.p._id)
+                    li.find('.id').text('Copied')
+                    scheduler.setTimeout(() => {
+                        li.find('.id').text(msg.p._id.substring(0, 6))
+                    }, 2500)
+                }
+            })
+            li.find('.id2').on('click', () => {
+                if (msg.m !== 'dm')
+                    return
+                navigator.clipboard.writeText(msg.recipient._id)
+                li.find('.id2').text('Copied')
+                scheduler.setTimeout(() => {
+                    li.find('.id2').text(msg.recipient._id.substring(0, 6))
+                }, 2500)
+            })
+            //Reply button click event listener
+            li.find('.reply').on('click', () => {
+                if (msg.m !== 'dm') {
+                    chat.startReply(msg.p, msg.id)
+                    scheduler.setTimeout(() => {
+                        $(`#msg-${msg.id}`).css({
+                            border: `1px solid ${msg?.m === 'a' ? msg.p?.color : (msg as any).sender?.color}80`,
+                            'background-color': `${msg?.m === 'a' ? msg.p?.color : (msg as any).sender?.color}20`
+                        })
+                    }, 100)
+                    scheduler.setTimeout(() => {
+                        $('#chat-input').trigger('focus')
+                    }, 100)
+                } else {
+                    if (msg.m === 'dm') {
+                        let replyingTo = msg.sender._id === gClient.user._id ? msg.recipient : msg.sender
+                        if (gClient.ppl[replyingTo._id]) {
+                            chat.startDmReply(replyingTo, msg.id)
+                            scheduler.setTimeout(() => {
+                                $(`#msg-${msg.id}`).css({
+                                    border: `1px solid ${msg?.m === 'dm' ? msg.sender?.color : (msg as any).p?.color}80`,
+                                    'background-color': `${msg?.m === 'dm' ? msg.sender?.color : (msg as any).p?.color}20`
+                                })
+                            }, 100)
+                            scheduler.setTimeout(() => {
+                                $('#chat-input').trigger('focus')
+                            }, 100)
+                        } else {
+                            new SiteNotification({
+                                target: '#piano',
+                                title: 'User not found.',
+                                text: 'The user who you are trying to reply to in a DM is not found, so a DM could not be started.'
+                            })
+                        }
+                    }
+                }
+            })
+            //put list element in chat
+            $('#chat ul').append(li)
+            this.messageCache.push(msg)
+            var eles = $('#chat ul li').get()
+            for (var i = 1; i <= 50 && i <= eles.length; i++) {
+                eles[eles.length - i].style.opacity = (1.0 - i * 0.03).toFixed(2)
+            }
+            if (eles.length > 50) {
+                eles[0].style.display = 'none'
+            }
+            if (eles.length > 256) {
+                this.messageCache.shift()
+                $(eles[0]).remove()
+            }
+            // scroll to bottom if not "chatting" or if not scrolled up
+            if (!$('#chat').hasClass('chatting')) {
+                chat.scrollToBottom()
+            } else {
+                var ele = $('#chat ul').get(0)
+                if (ele.scrollTop > ele.scrollHeight - ele.offsetHeight - 50) chat.scrollToBottom()
+            }
+        }
     }
-
+    chat.init()
     // MIDI
 
     ////////////////////////////////////////////////////////////////
@@ -3819,8 +3795,8 @@ $(function() {
                         if (gMidiVolumeTest) {
                             var knob = document.createElement('canvas')
                             Object.assign(knob, {
-                                width: 16 * window.devicePixelRatio,
-                                height: 16 * window.devicePixelRatio,
+                                width: 16 * globalThis.devicePixelRatio,
+                                height: 16 * globalThis.devicePixelRatio,
                                 className: 'knob'
                             })
                             li.appendChild(knob)
@@ -3873,8 +3849,8 @@ $(function() {
                         if (gMidiVolumeTest) {
                             var knob = document.createElement('canvas')
                             Object.assign(knob, {
-                                width: 16 * window.devicePixelRatio,
-                                height: 16 * window.devicePixelRatio,
+                                width: 16 * globalThis.devicePixelRatio,
+                                height: 16 * globalThis.devicePixelRatio,
                                 className: 'knob'
                             })
                             li.appendChild(knob)
@@ -3918,15 +3894,6 @@ $(function() {
         outputs: [],
         messageBuffer: [new Uint8Array(3), new Uint8Array(3)],
         connectionsNotif: null,
-        wait(fn, delay) {
-            if (delay > 0) {
-                setTimeout(() => {
-                    fn()
-                }, delay)
-            } else {
-                fn()
-            }
-        },
         noteOn(note, vel, delay, part) {
             if (this.outputs.length === 0)
                 return false
@@ -3936,7 +3903,7 @@ $(function() {
             if (noteNum === undefined) 
                 return false
             noteNum = noteNum + 9 - MIDI_TRANSPOSE
-            this.wait(() => {
+            scheduler.setTimeout(() => {
                 for (let output of this.outputs) {
                     if (!output.enabled)
                         continue
@@ -3957,7 +3924,7 @@ $(function() {
             if (noteNum === undefined) 
                 return false
             noteNum = noteNum + 9 - MIDI_TRANSPOSE
-            this.wait(() => {
+            scheduler.setTimeout(() => {
                 for (let output of this.outputs) {
                     if (!output.enabled)
                         continue
@@ -3984,7 +3951,7 @@ $(function() {
                         li.classList.add('enabled')
                     }
                     li.textContent = input.port.name
-                    li.addEventListener('click', e => {
+                    $(li).on('click', e => {
                         input.enabled = !input.enabled
                         if (!midiToggles.inputs)
                             midiToggles.inputs = {}
@@ -4006,7 +3973,7 @@ $(function() {
                         li.classList.add('enabled')
                     }
                     li.textContent = output.port.name
-                    li.addEventListener('click', e => {
+                    $(li).on('click', e => {
                         output.enabled = !output.enabled
                         if (!midiToggles.outputs)
                             midiToggles.outputs = {}
@@ -4044,8 +4011,8 @@ $(function() {
             let midi = await navigator.requestMIDIAccess()
             let midiToggles = JSON.parse(localStorage['hm.midiToggles'] ?? '{"inputs":{},"outputs":{}}')
             gMidi.access  = midi
-            gMidi.inputs  = midi.inputs .values().toArray().map(a => ({ enabled: midiToggles.inputs[a.name] ?? true, port: a }))
-            gMidi.outputs = midi.outputs.values().toArray().map(a => ({ enabled: midiToggles.outputs[a.name] ?? false, port: a }))
+            gMidi.inputs  = Array.from(midi.inputs .values()).map(a => ({ enabled: midiToggles.inputs[a.name] ?? true, port: a }))
+            gMidi.outputs = Array.from(midi.outputs.values()).map(a => ({ enabled: midiToggles.outputs[a.name] ?? false, port: a }))
             for (let input of gMidi.inputs) {
                 input.port.addEventListener('midimessage', e => {
                     let status  = e.data[0]
@@ -4077,7 +4044,7 @@ $(function() {
 
     ////////////////////////////////////////////////////////////////
 
-    window.onerror = function (message, url, line) {
+    globalThis.onerror = function (message, url, line) {
         /*var url = url || "(no url)";
     var line = line || "(no line)";
     // errors in socket.io
@@ -4128,10 +4095,10 @@ $(function() {
 
     // API
     globalThis.MPP = {
-        press: ::keyboard.press,
-        release: ::keyboard.release,
-        pressSustain: ::keyboard.sustainDown,
-        releaseSustain: ::keyboard.sustainUp,
+        press: keyboard.press.bind(keyboard),
+        release: keyboard.release.bind(keyboard),
+        pressSustain: keyboard.sustainDown.bind(keyboard),
+        releaseSustain: keyboard.sustainUp.bind(keyboard),
         keyboard,
         midi: gMidi,
         addons: {
@@ -4143,7 +4110,8 @@ $(function() {
         typingUsers,
         noteQuota: gNoteQuota,
         normalNoteQuotaParams,
-        soundSelector: gSoundSelector
+        soundSelector: gSoundSelector,
+        scheduler
     }
 
     // synth
@@ -4208,7 +4176,7 @@ $(function() {
                 var button = document.createElement('input')
                 Object.assign(button, {
                     type: 'button',
-                    value: window.i18nextify.i18next.t('ON/OFF'),
+                    value: globalThis.i18nextify.i18next.t('ON/OFF'),
                     className: enableSynth ? 'switched-on' : 'switched-off'
                 })
                 button.addEventListener('click', function (evt) {
@@ -4230,10 +4198,10 @@ $(function() {
             })()
 
             // mix
-            var knob = document.createElement('canvas')
+            var knob: HTMLCanvasElement | Knob = document.createElement('canvas')
             Object.assign(knob, {
-                width: 32 * window.devicePixelRatio,
-                height: 32 * window.devicePixelRatio,
+                width: 32 * globalThis.devicePixelRatio,
+                height: 32 * globalThis.devicePixelRatio,
                 className: 'knob'
             })
             html.appendChild(knob)
@@ -4249,25 +4217,25 @@ $(function() {
 
             // osc1 type
             ;(function () {
-                osc1_type = osc_types[osc_type_index]
+                osc1_type = osc_types[osc_type_index] as OscillatorType
                 var button = document.createElement('input')
                 Object.assign(button, {
                     type: 'button',
-                    value: window.i18nextify.i18next.t(osc_types[osc_type_index])
+                    value: globalThis.i18nextify.i18next.t(osc_types[osc_type_index])
                 })
                 button.addEventListener('click', function (evt) {
                     if (++osc_type_index >= osc_types.length) osc_type_index = 0
-                    osc1_type = osc_types[osc_type_index]
-                    button.value = window.i18nextify.i18next.t(osc1_type)
+                    osc1_type = osc_types[osc_type_index] as OscillatorType
+                    button.value = globalThis.i18nextify.i18next.t(osc1_type)
                 })
                 html.appendChild(button)
             })()
 
             // osc1 attack
-            var knob = document.createElement('canvas')
+            var knob: HTMLCanvasElement | Knob = document.createElement('canvas')
             Object.assign(knob, {
-                width: 32 * window.devicePixelRatio,
-                height: 32 * window.devicePixelRatio,
+                width: 32 * globalThis.devicePixelRatio,
+                height: 32 * globalThis.devicePixelRatio,
                 className: 'knob'
             })
             html.appendChild(knob)
@@ -4280,10 +4248,10 @@ $(function() {
             knob.emit('change', knob)
 
             // osc1 decay
-            var knob = document.createElement('canvas')
+            var knob: HTMLCanvasElement | Knob = document.createElement('canvas')
             Object.assign(knob, {
-                width: 32 * window.devicePixelRatio,
-                height: 32 * window.devicePixelRatio,
+                width: 32 * globalThis.devicePixelRatio,
+                height: 32 * globalThis.devicePixelRatio,
                 className: 'knob'
             })
             html.appendChild(knob)
@@ -4295,10 +4263,10 @@ $(function() {
             })
             knob.emit('change', knob)
 
-            var knob = document.createElement('canvas')
+            var knob: HTMLCanvasElement | Knob = document.createElement('canvas')
             Object.assign(knob, {
-                width: 32 * window.devicePixelRatio,
-                height: 32 * window.devicePixelRatio,
+                width: 32 * globalThis.devicePixelRatio,
+                height: 32 * globalThis.devicePixelRatio,
                 className: 'knob'
             })
             html.appendChild(knob)
@@ -4311,10 +4279,10 @@ $(function() {
             knob.emit('change', knob)
 
             // osc1 release
-            var knob = document.createElement('canvas')
+            var knob: HTMLCanvasElement | Knob = document.createElement('canvas')
             Object.assign(knob, {
-                width: 32 * window.devicePixelRatio,
-                height: 32 * window.devicePixelRatio,
+                width: 32 * globalThis.devicePixelRatio,
+                height: 32 * globalThis.devicePixelRatio,
                 className: 'knob'
             })
             html.appendChild(knob)
@@ -4346,7 +4314,7 @@ $(function() {
         }
     })()
     ;(function () {
-        if (window.location.hostname === 'multiplayerpiano.com') {
+        if (globalThis.location.hostname === 'multiplayerpiano.com') {
             var button = document.getElementById('client-settings-btn')
             var notification
 
@@ -4422,9 +4390,9 @@ $(function() {
                         localStorage.noBackgroundColor = setting.classList.contains('enabled')
                         gNoBackgroundColor = setting.classList.contains('enabled')
                         if (gClient.channel.settings.color && !gNoBackgroundColor) {
-                            setBackgroundColor(gClient.channel.settings.color, gClient.channel.settings.color2)
+                            globalThis.setBackgroundColor(gClient.channel.settings.color, gClient.channel.settings.color2)
                         } else {
-                            setBackgroundColorToDefault()
+                            globalThis.setBackgroundColorToDefault()
                         }
                     }
                     html.appendChild(setting)
@@ -4642,14 +4610,14 @@ $(function() {
 
                 let label = document.createElement('label')
 
-                label.innerText = window.i18nextify.i18next.t(labelText + ':') + ' '
+                label.innerText = globalThis.i18nextify.i18next.t(labelText + ':') + ' '
 
                 label.appendChild(setting)
                 html.appendChild(label)
                 if (addBr) html.appendChild(document.createElement('br'))
             }
 
-            window.changeClientSettingsTab = (evt, tabName) => {
+            globalThis.changeClientSettingsTab = (evt, tabName) => {
                 content.innerHTML = ''
 
                 for (let index = 0; index < tablinks.length; index++) {
@@ -4816,9 +4784,9 @@ $(function() {
                             localStorage.noBackgroundColor = gNoBackgroundColor
 
                             if (gClient.channel.settings.color && !gNoBackgroundColor) {
-                                setBackgroundColor(gClient.channel.settings.color, gClient.channel.settings.color2)
+                                globalThis.setBackgroundColor(gClient.channel.settings.color, gClient.channel.settings.color2)
                             } else {
-                                setBackgroundColorToDefault()
+                                globalThis.setBackgroundColorToDefault()
                             }
                         })
                         let accounts = Object.values(gClient.ppl)
@@ -4875,7 +4843,7 @@ $(function() {
                 }
             }
 
-            changeClientSettingsTab(
+            globalThis.changeClientSettingsTab(
                 {
                     currentTarget: document.getElementsByClassName('client-settings-tablink')[0]
                 },
@@ -4929,9 +4897,9 @@ $(function() {
         }
 
         function startConfettiInner() {
-            var width = window.innerWidth
-            var height = window.innerHeight
-            var canvas = document.getElementById('confetti-canvas')
+            var width = globalThis.innerWidth
+            var height = globalThis.innerHeight
+            var canvas = document.getElementById('confetti-canvas') as HTMLCanvasElement
             if (canvas === null) {
                 canvas = document.createElement('canvas')
                 canvas.setAttribute('id', 'confetti-canvas')
@@ -4939,11 +4907,11 @@ $(function() {
                 document.body.appendChild(canvas)
                 canvas.width = width
                 canvas.height = height
-                window.addEventListener(
+                globalThis.addEventListener(
                     'resize',
                     function () {
-                        canvas.width = window.innerWidth
-                        canvas.height = window.innerHeight
+                        canvas.width = globalThis.innerWidth
+                        canvas.height = globalThis.innerHeight
                     },
                     true
                 )
@@ -4953,7 +4921,7 @@ $(function() {
             streamingConfetti = true
             if (animationTimer === null) {
                 ;(function runAnimation() {
-                    context.clearRect(0, 0, window.innerWidth, window.innerHeight)
+                    context.clearRect(0, 0, globalThis.innerWidth, globalThis.innerHeight)
                     if (particles.length === 0) animationTimer = null
                     else {
                         updateParticles()
@@ -4998,8 +4966,8 @@ $(function() {
         }
 
         function updateParticles() {
-            var width = window.innerWidth
-            var height = window.innerHeight
+            var width = globalThis.innerWidth
+            var height = globalThis.innerHeight
             var particle
             waveAngle += 0.01
             for (var i = 0; i < particles.length; i++) {
@@ -5038,7 +5006,7 @@ $(function() {
             let option = document.createElement('option')
             option.value = z.code
             option.innerText = z.native
-            if (z.code == i18nextify.i18next.language.split('-')[0]) {
+            if (z.code == globalThis.i18nextify.i18next.language.split('-')[0]) {
                 option.selected = true
             }
             option.setAttribute('translated', '')
@@ -5050,8 +5018,8 @@ $(function() {
         })
 
         document.querySelector('#language > button').addEventListener('click', async (e) => {
-            await i18nextify.i18next.changeLanguage(document.querySelector('#languages').selectedOptions[0].value)
-            i18nextify.forceRerender()
+            await globalThis.i18nextify.i18next.changeLanguage((document.querySelector('#languages') as HTMLSelectElement).selectedOptions[0].value)
+            globalThis.i18nextify.forceRerender()
             closeModal()
         })
     })();
@@ -5062,8 +5030,8 @@ $(function() {
             let snow = document.createElement('div')
             snow.id = 'tsparticles'
             $(document.body).prepend(snow)
-            await loadSnowPreset(tsParticles);
-            await tsParticles.load({
+            await globalThis.loadSnowPreset(globalThis.tsParticles);
+            await globalThis.tsParticles.load({
                 id: 'tsparticles',
                 options: {
                     preset: 'snow',
@@ -5101,7 +5069,7 @@ $(function() {
 // non-ad-free experience
 /*(function() {
   function adsOn() {
-    if(window.localStorage) {
+    if(globalThis.localStorage) {
       var div = document.querySelector("#inclinations");
       div.innerHTML = "Ads:<br>ON / <a id=\"adsoff\" href=\"#\">OFF</a>";
       div.querySelector("#adsoff").addEventListener("click", adsOff);
@@ -5114,7 +5082,7 @@ $(function() {
   }
 
   function adsOff() {
-    if(window.localStorage) localStorage.ads = false;
+    if(globalThis.localStorage) localStorage.ads = false;
     document.location.reload(true);
   }
 
@@ -5124,7 +5092,7 @@ $(function() {
     div.querySelector("#adson").addEventListener("click", adsOn);
   }
 
-  if(window.localStorage) {
+  if(globalThis.localStorage) {
     if(localStorage.ads === undefined || localStorage.ads === "true")
       adsOn();
     else

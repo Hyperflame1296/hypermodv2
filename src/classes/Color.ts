@@ -1,14 +1,14 @@
 export class Color {
     static map = {}
-    static addToMap(hexa, name) {
+    static addToMap(hexa: string, name: string) {
         Color.map[name] = new Color(hexa)
     }
     r: number
     g: number
     b: number
-    constructor() {
+    constructor(...args: (string | number)[]) {
         var r, g, b
-        if (arguments.length === 1) {
+        if (args.length === 1) {
             var hexa = arguments[0].toLowerCase()
             if (hexa.match(/^#[0-9a-f]{6}$/i)) {
                 hexa = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hexa)
@@ -18,23 +18,23 @@ export class Color {
                     b = parseInt(hexa[3], 16)
                 }
             }
-        } else if (arguments.length === 3) {
-            r = arguments[0]
-            g = arguments[1]
-            b = arguments[2]
+        } else if (args.length === 3) {
+            r = args[0]
+            g = args[1]
+            b = args[2]
         }
         this.r = ~~r || 0
         this.g = ~~g || 0
         this.b = ~~b || 0
     }
-    distance(color) {
+    distance(color: Color) {
         var d = 0
         d += Math.pow(this.r - color.r, 2)
         d += Math.pow(this.g - color.g, 2)
         d += Math.pow(this.b - color.b, 2)
         return Math.abs(Math.sqrt(d))
     }
-    add(r, g, b) {
+    add(r: number, g: number, b: number) {
         this.r += r
         this.g += g
         this.b += b

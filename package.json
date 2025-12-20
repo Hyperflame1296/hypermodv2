@@ -1,20 +1,21 @@
 {
     "type": "module",
+    "scripts": {
+        "clean": "rimraf dist/",
+        "copy-files": "copyfiles -u 1 src/**/*.htm src/**/*.css src/**/*.js src/**/*.json dist/",
+        "build": "npm run clean && npm run copy-files && tsc"
+    },
     "dependencies": {
-        "@babel/cli": "^8.0.0-beta.3",
-        "@babel/core": "^8.0.0-beta.3",
-        "@babel/eslint-parser": "^8.0.0-beta.3",
-        "@babel/plugin-proposal-do-expressions": "^8.0.0-beta.3",
-        "@babel/plugin-proposal-function-bind": "^8.0.0-beta.3",
-        "@babel/plugin-proposal-pipeline-operator": "^8.0.0-beta.3",
-        "@babel/plugin-proposal-throw-expressions": "^8.0.0-beta.3",
-        "@babel/preset-env": "^8.0.0-beta.3",
-        "@babel/preset-typescript": "^8.0.0-beta.3",
+        "@tsparticles/preset-snow": "^3.2.0",
         "cli-color": "^2.0.4",
-        "eslint": "^9.39.1",
+        "i18nextify": "^4.0.0",
+        "jquery": "^3.4.1",
         "terser": "^5.44.1"
     },
     "devDependencies": {
-        "@tsparticles/preset-snow": "^3.2.0"
+        "@types/jquery": "^3.5.33",
+        "copyfiles": "^2.4.1",
+        "rimraf": "^6.1.2",
+        "typescript": "^5.9.3"
     }
 }

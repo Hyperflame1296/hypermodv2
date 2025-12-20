@@ -140,4 +140,6 @@ dist
 /package-lock.json
 src/script_backup.js
 /quick_build.ps1
+/hypermod.cmd
+/hypermod.lnk
 .vscode/

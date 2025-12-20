@@ -8,4 +8,5 @@ export interface UserPermissions {
     siteBanAnyReason?: boolean
     siteBanAnyDuration?: boolean
     usersetOthers?: boolean
+    playNotesAnywhere?: boolean
 }

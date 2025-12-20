@@ -12,6 +12,7 @@ export interface OutgoingMessage {
     'a': {
         m: 'a'
         message: string
+        _id?: string
         reply_to?: string
     }
     'bye': {
@@ -21,6 +22,9 @@ export interface OutgoingMessage {
         m: 'ch'
         _id: string
         set: ChannelSettings
+    }
+    'clearchat': {
+        m: 'clearchat'
     }
     'chown': {
         m: 'chown'
@@ -55,7 +59,8 @@ export interface OutgoingMessage {
     'hi': {
         m: 'hi'
         token?: string
-        login: Login
+        login?: Login,
+        '🐈'?: number
     }
     'kickban': {
         m: 'kickban'
@@ -72,6 +77,16 @@ export interface OutgoingMessage {
         t: number
         n: Note[]
     }
+    'setcolor': {
+        m: 'setcolor'
+        _id: string
+        color: string
+    }
+    'setname': {
+        m: 'setname'
+        _id: string
+        name: string
+    }
     't': {
         m: 't'
         e: number
@@ -83,9 +98,13 @@ export interface OutgoingMessage {
     'userset': {
         m: 'userset'
         set: {
-            name: number
+            name: string
             color: string
         }
+    }
+    'v': {
+        m: 'v',
+        vanish: boolean
     }
     // subscriptions
     '+ls': {

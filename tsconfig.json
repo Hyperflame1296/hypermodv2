@@ -1,12 +1,12 @@
 {
     "include": ["src"],
     "compilerOptions": {
-        "rootDir": "./src",
-        "noEmit": true,
-        "isolatedModules": true,
         "allowJs": true,
-        "checkJs": false,
-        "skipLibCheck": true,
-        "strict": true
+        "rootDir": "./src",
+        "outDir": "./dist",
+        "module": "esnext",
+        "target": "es2024",
+        "moduleResolution": "classic",
+        "esModuleInterop": true
     }
 }

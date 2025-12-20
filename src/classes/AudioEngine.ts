@@ -11,8 +11,8 @@ class AudioEngine {
         return this
     }
     load(id: string, url: string | URL, cb: () => any) {}
-    play() {}
-    stop() {}
+    play(id: string, vol: number, delay_ms: number, part_id: string) {}
+    stop(id: string, delay_ms: number, part_id: string) {}
     setVolume(x: number) {
         this.volume = x
     }

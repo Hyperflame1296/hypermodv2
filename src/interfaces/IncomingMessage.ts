@@ -1,13 +1,15 @@
 // import: local interfaces
-import type { AccountInfo } from './AccountInfo.js'
-import type { ChannelInfo } from './ChannelInfo.js'
-import type { ChannelSettings } from './ChannelSettings.js'
-import type { Note } from './Note.js'
-import type { ParticipantInfo } from './ParticipantInfo.js'
-import type { UserPermissions } from './UserPermissions.js'
+import { AccountInfo } from './AccountInfo.js'
+import { ChannelInfo } from './ChannelInfo.js'
+import { ChannelSettings } from './ChannelSettings.js'
+import { Note } from './Note.js'
+import { ParticipantInfo } from './ParticipantInfo.js'
+import { Tag } from './Tag.js'
+import { UserPermissions } from './UserPermissions.js'
 
 // declaration
 export interface IncomingMessage {
+    // from server
     'a': {
         m: 'a'
         id: string
@@ -58,6 +60,7 @@ export interface IncomingMessage {
     'hi': {
         m: 'hi'
         t: number
+        e?: number
         u: ParticipantInfo
         permissions: UserPermissions
         token?: string
@@ -104,7 +107,9 @@ export interface IncomingMessage {
         color: string
         id: string
         x: number
-        y: number
+        y: number,
+        tag?: Tag
+        vanished?: boolean
     }
     't': {
         m: 't'

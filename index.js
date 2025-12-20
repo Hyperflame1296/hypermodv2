@@ -24,6 +24,7 @@ let server = http.createServer((req, res) => {
     try {
         let dist = path.join(publicDir, req.url)
         let root = path.join('./', req.url)
+        console.log(dist)
         if (fs.existsSync(dist) && !fs.statSync(dist).isDirectory()) {
             fs.readFile(dist, (err, content) => {
                 if (err) {
@@ -67,7 +68,7 @@ let server = http.createServer((req, res) => {
                 }
             })
         } else {
-            fs.readFile(path.join(publicDir, 'index.html'), (err, content) => {
+            fs.readFile(path.join(publicDir, 'index.htm'), (err, content) => {
                 if (err) {
                     res.writeHead(500, { 
                         'Content-Type': 'text/html',

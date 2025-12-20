@@ -7,9 +7,14 @@ export interface ParticipantInfo {
     _id: string
     name: string
     color: string
-    x: number | string
-    y: number | string
-    afk: boolean
+    x?: number | string
+    y?: number | string
+    afk?: boolean
     tag?: Tag,
     vanished?: boolean
+    // client stuff
+    nameDiv?: HTMLDivElement
+    cursorDiv?: HTMLDivElement
+    displayX?: number
+    displayY?: number
 }

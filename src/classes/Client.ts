@@ -11,8 +11,15 @@ import type { AccountInfo } from '../interfaces/AccountInfo.js'
 import type { UserPermissions } from '../interfaces/UserPermissions.js'
 import type { ParticipantInfo } from '../interfaces/ParticipantInfo.js'
 import type { ChannelSettings } from '../interfaces/ChannelSettings.js'
+import { ClientMessage } from '../interfaces/ClientMessage.js'
 
 // code
+declare global {
+    interface Window {
+        MPP: any
+    }
+}
+declare let process
 WebSocket.prototype.send = new Proxy(WebSocket.prototype.send, {
     apply: (target, thisArg, args) => {
         if (typeof args[0] !== 'string') return target.apply(thisArg, args)
@@ -57,13 +64,12 @@ export class Client extends EventEmitter {
     noteBuffer: any[] = []
     noteBufferTime: number = 0
     noteFlushInterval: number
-    permissions: any = {}
     '🐈': number = 0
     loginInfo: Login
     accountInfo: AccountInfo
-    permissions: UserPermissions
+    permissions: UserPermissions = {}
     constructor(uri) {
-        if (window.MPP && MPP.client) {
+        if (window.MPP && window.MPP.client) {
             throw new Error(
                 'Running multiple clients in a single tab is not allowed due to abuse. Attempting to bypass this may result in an auto-ban!'
             )
@@ -100,7 +106,7 @@ export class Client extends EventEmitter {
         this.emit('status', 'Connecting...')
         if (typeof process !== 'undefined') {
             // nodejsicle
-            this.ws = new WebSocket(this.uri, {
+            this.ws = new (WebSocket as any)(this.uri, {
                 origin: 'https://www.multiplayerpiano.com'
             })
         } else {
@@ -132,7 +138,7 @@ export class Client extends EventEmitter {
             var idx = this.connectionAttempts
             if (idx >= ms_lut.length) idx = ms_lut.length - 1
             var ms = ms_lut[idx]
-            setTimeout(::this.connect, ms)
+            setTimeout(this.connect.bind(this), ms)
         })
         this.ws.addEventListener('error', e => {
             this.emit('wserror', e)
@@ -148,7 +154,7 @@ export class Client extends EventEmitter {
                     }
                 ]);
             }
-            this.pingInterval = setInterval(::this.sendPing, 20000)
+            this.pingInterval = setInterval(this.sendPing.bind(this), 20000)
             this.noteBuffer = []
             this.noteBufferTime = 0
             this.noteFlushInterval = setInterval((() => {
@@ -171,8 +177,8 @@ export class Client extends EventEmitter {
         this.ws.addEventListener('message', async e => {
             var transmission = this.ws.binaryType === 'arraybuffer' ? this.translator.receive(e.data) : JSON.parse(e.data)
             for (var i = 0; i < transmission.length; i++) {
-                var msg: IncomingMessageMap[keyof IncomingMessageMap] = transmission[i]
-                this.emit(msg.m, msg)
+                var msg: IncomingMessage[keyof IncomingMessage] = transmission[i]
+                this.emit((msg as any).m, msg)
             }
         })
     }
@@ -273,7 +279,7 @@ export class Client extends EventEmitter {
         })
         this.on('b', async msg => {
             let uri = new URL(this.uri)
-            var hiMsg = { m: 'hi' }
+            var hiMsg: any = { m: 'hi' }
             hiMsg['🐈'] = this['🐈']++ || undefined
             if (this.loginInfo) hiMsg.login = this.loginInfo
             this.loginInfo = undefined
@@ -300,7 +306,7 @@ export class Client extends EventEmitter {
                 }
                 hiMsg.code = errStr;
                 console.log(`An error has occured in the code that generates the check hash! - %c${errStr}\nThe websocket will now close.`, `
-                    color: #ff4848;
+                    color: #ff7676ff;
                     font-style: italic
                 `)
                 this.ws.close()
@@ -315,10 +321,10 @@ export class Client extends EventEmitter {
     send(raw) {
         if (this.isConnected()) this.ws.send(raw)
     }
-    sendArray(arr: OutgoingMessageMap[keyof OutgoingMessageMap][]) {
+    sendArray(arr: OutgoingMessage[keyof OutgoingMessage][]) {
         this.isConnected() && this.ws.binaryType === 'arraybuffer' ? this.send(this.translator.send(arr)) : this.send(JSON.stringify(arr))
     }
-    setChannel(id, set) {
+    setChannel(id?: string, set?: ChannelSettings | {}) {
         this.desiredChannelId = id || this.desiredChannelId || 'lobby'
         this.desiredChannelSettings = set || this.desiredChannelSettings || undefined
         this.sendArray([{ m: 'ch', _id: this.desiredChannelId, set: this.desiredChannelSettings }])
@@ -344,11 +350,20 @@ export class Client extends EventEmitter {
         _id: '000000000000000000000000',
          id: '000000000000000000000000',
         name: 'You',
-        color: '#777777'
+        color: '#777777',
+        x: 0,
+        y: 0,
+        afk: false
     }
     offlineChannelSettings: ChannelSettings = {
         color: '#220022',
-        color2: '#000022'
+        color2: '#000022',
+        visible: true,
+        chat: true,
+        crownsolo: false,
+        noindex: true,
+        allowBots: true,
+        limit: 99
     }
     getOwnParticipant(): ParticipantInfo {
         return this.findParticipantById(this.participantId)
@@ -380,7 +395,7 @@ export class Client extends EventEmitter {
         }
         return count
     }
-    participantUpdate(update) {
+    participantUpdate(update: ParticipantInfo | IncomingMessage['p']) {
         var part = this.ppl[update.id] || null
         if (part === null) {
             part = update
@@ -395,14 +410,14 @@ export class Client extends EventEmitter {
             if (!update.vanished) delete part.vanished
         }
     }
-    participantMoveMouse(update) {
+    participantMoveMouse(update: IncomingMessage['m']) {
         var part = this.ppl[update.id] || null
         if (part !== null) {
             part.x = update.x
             part.y = update.y
         }
     }
-    removeParticipant(id) {
+    removeParticipant(id: string) {
         if (this.ppl.hasOwnProperty(id)) {
             var part = this.ppl[id]
             delete this.ppl[id]
@@ -424,7 +439,7 @@ export class Client extends EventEmitter {
             !this.permissions.playNotesAnywhere
         )
     }
-    receiveServerTime(time, echo) {
+    receiveServerTime(time: number, echo: number) {
         var now = Date.now()
         var target = time - now
         // console.log("Target serverTimeOffset: " + target);
@@ -449,7 +464,7 @@ export class Client extends EventEmitter {
         // not smooth:
         // if(echo) this.serverTimeOffset += echo - now;    // mostly round trip time offset
     }
-    startNote(note, vel) {
+    startNote(note: string, vel: number) {
         if (typeof note !== 'string') return
         if (this.isConnected()) {
             var vel = typeof vel === 'undefined' ? undefined : +vel.toFixed(3)
@@ -481,30 +496,30 @@ export class Client extends EventEmitter {
         }
     }
     sendPing() {
-        var msg = { m: 't', e: Date.now() }
+        var msg: OutgoingMessage['t'] = { m: 't', e: Date.now() }
         this.sendArray([msg])
     }
-    setLoginInfo(loginInfo) {
+    setLoginInfo(loginInfo: Login) {
         this.loginInfo = loginInfo
     }
-    on<K extends keyof IncomingMessage>(
+    on<K extends keyof (IncomingMessage & ClientMessage)>(
         en: K,
-        fn: (msg: IncomingMessage[K]) => any
+        fn: (msg: (IncomingMessage & ClientMessage)[K]) => any
     ): this {
         super.on(en, fn)
         return this
     }
-    emit(en: string, data: any): boolean {
+    emit(en: keyof IncomingMessage | keyof ClientMessage, ...data: any[]): boolean {
         try {
-            super.emit(en, data)
+            super.emit(en, ...data)
             return true
         } catch (err) {
             return false
         }
     }
-    off<K extends keyof IncomingMessage>(
+    off<K extends keyof (IncomingMessage & ClientMessage)>(
         en: K,
-        fn: (msg: IncomingMessage[K]) => any
+        fn: (msg: (IncomingMessage & ClientMessage)[K]) => any
     ): this {
         super.off(en, fn)
         return this

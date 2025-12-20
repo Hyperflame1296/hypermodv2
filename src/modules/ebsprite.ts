@@ -2391,7 +2391,16 @@ var spriteData = [
         sprites: ['4014', '4015', '4016', '4017', '4018', '4019', '4020', '4021']
     }
 ]
-
+class Camera {
+    width: number
+    height: number
+    position: { x: 0, y: 0 }
+    constructor(width: number, height: number) {
+        this.width = width
+        this.height = height
+        this.position = { x: 0, y: 0 }
+    }
+}
 function ebsprite() {}
 
 ebsprite.start = function (client) {
@@ -2411,12 +2420,6 @@ ebsprite.start = function (client) {
     var camera = new Camera(this.canvas.width, this.canvas.height)
     var context = this.canvas.getContext('2d')
     context.fillStyle = 'rgb(255,255,255)'
-
-    requestAnimationFrame =
-        window.requestAnimationFrame ||
-        window.mozRequestAnimationFrame ||
-        window.webkitRequestAnimationFrame ||
-        window.msRequestAnimationFrame
 
     var ySort = function (a, b) {
         return a.position.y - b.position.y
@@ -2517,20 +2520,9 @@ ebsprite.start = function (client) {
         }
     }
 
-    class Camera {
-        width: number
-        height: number
-        position: { x: 0, y: 0 }
-        constructor(width: number, height: number) {
-            this.width = width
-            this.height = height
-            this.position = { x: 0, y: 0 }
-        }
-    }
-
     class SpriteProvider {
-        sprites: Record<String, any>
-        constructor(sprites = ['2354','2355','2356','2357','2358','2359','2360','2361'], cb) {
+        sprites: Record<string, any>
+        constructor(sprites = ['2354','2355','2356','2357','2358','2359','2360','2361'], cb?: () => void) {
             var urls = new Array(sprites.length)
             for (var i in sprites) {
                 urls[i] = '/assets/ebsprite/' + sprites[i] + '.png'
@@ -2566,6 +2558,16 @@ ebsprite.start = function (client) {
         }
     }
     class Player {
+        id: any
+        sprites: string[]
+        spriteProvider: SpriteProvider
+        canMoveDiagonally: boolean
+        walkSpeed: number
+        direction: string
+        walking: boolean
+        updatePosition: { x: number; y: number }
+        position: { x: any; y: any }
+        updateTime: number
         constructor(id) {
             this.id = id
 
@@ -2686,8 +2688,8 @@ ebsprite.stop = function () {
         this.client.off('participant removed', this.participantRemoved)
     }
 }
-if (typeof module !== 'undefined') {
-    module.exports = ebsprite
+if (typeof globalThis.module !== 'undefined') {
+    globalThis.module.exports = ebsprite
 } else {
     globalThis.ebsprite = ebsprite
 }

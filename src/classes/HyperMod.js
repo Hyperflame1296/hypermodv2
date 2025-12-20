@@ -13,7 +13,7 @@ export class HyperMod {
     player = new Player
     npsTracker = new NPSTracker
     currentFile
-    version = 'v0.2.0.71'
+    version = 'v0.2.0.72'
     defaultSettings = {
         // MPP section
         forceInfNoteQuota: true,
@@ -508,7 +508,9 @@ export class HyperMod {
         }
     }
     async loadMIDI(fn) {
-        let data = this.fileData.get(fn) ?? throw new Error(`There is no MIDI named \'${fn}\' loaded into HyperMod.`)
+        let data = this.fileData.get(fn)
+        if (!data)
+            throw new Error(`There is no MIDI named \'${fn}\' loaded into HyperMod.`)
         if (this.currentFile === fn)
             return false
         this.currentFile = fn
@@ -600,7 +602,7 @@ export class HyperMod {
             $(del).attr('data-file', key)
             $(del).attr('id', 'delete-file-link')
             if (key !== this.currentFile)
-                $(load).click(async e => {
+                $(load).on('click', async e => {
                     let g = e.target
                     if (!g.dataset.file)
                         return
@@ -610,7 +612,7 @@ export class HyperMod {
                         this.playMIDI()
                     this.updateFileList()
                 })
-            $(del).click(async e => {
+            $(del).on('click', async e => {
                 let g = e.target
                 if (!g.dataset.file)
                     return
@@ -682,14 +684,14 @@ export class HyperMod {
         let html = ''
 
         // load files
-        let res_locations = await fetch('hypermod/ui/_hmLocations.json')
+        let res_locations = await fetch('../hypermod/ui/_hmLocations.json')
         if (!res_locations.ok) throw `AHH! - location loading failed! - code ${res_locations.status}, \'${res_locations.statusText}\'`
         this.locations = await res_locations.json()
 
         let res_bindings = await import('../hypermod/ui/_hmBindings.js')
         this.bindings = res_bindings.default(this)
 
-        let res_styles = await fetch('hypermod/ui/_hmStyles.css')
+        let res_styles = await fetch('../hypermod/ui/_hmStyles.css')
         if (!res_styles.ok) throw `AHH! - style loading failed! - code ${res_styles.status}, \'${res_styles.statusText}\'`
         this.styles = await res_styles.text()
 
@@ -720,7 +722,7 @@ export class HyperMod {
         }
 
         // add hypermod hotkey
-        $(window).keydown(e => {
+        $(window).on('keydown', e => {
             switch (e.code) {
                 case 'KeyH':
                     let div = $('.hypermod#main-menu, .hypermod#tabs')
