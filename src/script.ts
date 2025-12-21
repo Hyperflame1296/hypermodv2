@@ -115,7 +115,36 @@ $(function() {
         gSnowflakes: new Date().getMonth() === 11 && localStorage.snowflakes !== 'false',
     }
 
-    window.addEventListener('popstate', e => {
+    function getRoomNameFromURL() {
+        let channel_id = decodeURIComponent(globalThis.location.search).replace('?c=', '')
+        if (channel_id.substring(0, 1) == '/') channel_id = channel_id.substring(1)
+        if (!channel_id) {
+            channel_id = getParameterByName('c')
+        }
+        if (!channel_id) channel_id = 'lobby'
+        return channel_id
+    }
+
+    // internet science
+
+    ////////////////////////////////////////////////////////////////
+
+    var channel_id = getRoomNameFromURL()
+
+    var loginInfo
+    if (getParameterByName('callback') === 'discord') {
+        var code = getParameterByName('code')
+        if (code) {
+            loginInfo = {
+                type: 'discord',
+                code
+            }
+        }
+        history.pushState({ name: 'lobby' }, 'Piano > lobby', '/')
+        channel_id = 'lobby'
+    }
+
+    $(window).on('popstate' as any, (e: PopStateEvent) => {
         var depth = e.state ? e.state.depth : 0
         //if (depth == gHistoryDepth) return; // <-- forgot why I did that though...
         //yeah brandon idk why you did that either, but it's stopping the back button from changing rooms after 1 click so I commented it out
@@ -1317,7 +1346,7 @@ $(function() {
                 if (!voice)
                     return
                 if (voice.started)
-                    this.stop(id, delay_ms, part_id)
+                    this.stop(id, 0, part_id)
 
                 voice.gain.gain.value = vol * vol
                 voice.source.start(this.context.currentTime)
@@ -1335,27 +1364,26 @@ $(function() {
                 if (!voice)
                     return
                 if (voice.started) {
-                    if (gHyperMod.lsSettings.enableRelease) {
+                    if (gHyperMod.lsSettings.enableRelease ?? false) {
                         voice.gain.gain.setValueAtTime(voice.gain.gain.value, this.context.currentTime);
                         voice.gain.gain.linearRampToValueAtTime(0.0, this.context.currentTime + 0.2);
                         voice.source.stop(this.context.currentTime + 0.20);
                         voice.started = false
 
-                        let source = this.context.createBufferSource()
-                        source.buffer = voice.source.buffer
-                        let gain = this.context.createGain()
-                        gain.connect(this.limiterNode)
-                        source.connect(gain)
-                        voice.source = source
-                        voice.gain = gain
+                        let buf = voice.source.buffer
+                        voice.source = this.context.createBufferSource()
+                        voice.source.buffer = buf
+                        voice.gain = this.context.createGain()
+                        voice.gain.connect(this.limiterNode)
+                        voice.source.connect(voice.gain)
                     } else {
                         voice.source.stop()
                         voice.started = false
-                        
-                        let source = this.context.createBufferSource()
-                        source.buffer = voice.source.buffer
-                        source.connect(voice.gain)
-                        voice.source = source
+
+                        let buf = voice.source.buffer
+                        voice.source = this.context.createBufferSource()
+                        voice.source.buffer = buf
+                        voice.source.connect(voice.gain)
                     }
                 }
             }, delay_ms)
@@ -2151,35 +2179,6 @@ $(function() {
         buttonElement.innerText = 'Rules'
         aElement.appendChild(buttonElement)
         document.body.appendChild(aElement)
-    }
-
-    function getRoomNameFromURL() {
-        let channel_id = decodeURIComponent(globalThis.location.search).replace('?c=', '')
-        if (channel_id.substring(0, 1) == '/') channel_id = channel_id.substring(1)
-        if (!channel_id) {
-            channel_id = getParameterByName('c')
-        }
-        if (!channel_id) channel_id = 'lobby'
-        return channel_id
-    }
-
-    // internet science
-
-    ////////////////////////////////////////////////////////////////
-
-    var channel_id = getRoomNameFromURL()
-
-    var loginInfo
-    if (getParameterByName('callback') === 'discord') {
-        var code = getParameterByName('code')
-        if (code) {
-            loginInfo = {
-                type: 'discord',
-                code
-            }
-        }
-        history.pushState({ name: 'lobby' }, 'Piano > lobby', '/')
-        channel_id = 'lobby'
     }
 
     var tabIsActive = true
@@ -3658,7 +3657,7 @@ $(function() {
         })
     })()
 
-    function changeRoom(name: string, direction?: string, settings?: ChannelSettings | {}, push?: any) {
+    function changeRoom(name: string, direction?: string, settings?: ChannelSettings | {}, push?: boolean) {
         if (!settings) settings = {}
         if (!direction) direction = 'right'
         if (typeof push == 'undefined') push = true
@@ -3679,7 +3678,7 @@ $(function() {
                 return;
             }
         }
-
+        console.log(name)
         gClient.setChannel(name, settings)
 
         var t = 0,
