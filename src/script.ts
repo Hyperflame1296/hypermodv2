@@ -365,6 +365,79 @@ $(function() {
         }
     }
 
+    // typing system
+    let typing = {
+        initialized: false,
+        timeout: undefined,
+        users: new Set(),
+        init() {
+            if (this.initialized)
+                return console.warn(`MPP.typing.init() called more than once!`)
+            this.initialized = true
+            gClient.on('custom', msg => {
+                if (msg.data.m === 'hypermod') {
+                    switch (msg.data.type) {
+                        case 'typing':
+                            if (msg.data.stop) {
+                                typing.removeUser(msg.p)
+                            } else {
+                                typing.addUser(msg.p)
+                            }
+                            typing.updateStatus()
+                            break
+                    }
+                }
+            })
+            gClient.on('bye', e => {
+                typing.removeUser(e.p)
+                typing.updateStatus()
+            })
+        },
+        updateStatus() {
+            let element = $('#typing-container.hypermod')
+            if (this.users.size == 0) {
+                element.hide()
+            } else {
+                element.show()
+                let text = util.lang.listFormat(Array.from(this.users.values()).map(id => `<span style='color: ${gClient.findParticipantById(id).color};'>${gClient.findParticipantById(id).name}</span>`))
+                element.html(this.users.size == 1 ? text + ' is typing...' : text + ' are typing...')
+            }
+        },
+        startTyping() {
+            gClient.sendArray([{ 
+                m: 'custom',
+                target: {
+                    mode: 'subscribed'
+                },
+                data: {
+                    m: 'hypermod',
+                    type: 'typing'
+                }
+            }])
+            //typingUsers.add(gClient.participantId) // debugging
+        },
+        stopTyping() {
+            gClient.sendArray([{ 
+                m: 'custom',
+                target: {
+                    mode: 'subscribed'
+                },
+                data: {
+                    m: 'hypermod',
+                    type: 'typing',
+                    stop: true
+                }
+            }])
+            //typingUsers.delete(gClient.participantId) // debugging
+        },
+        addUser(id: string) {
+            this.users.add(id)
+        },
+        removeUser(id: string) {
+            this.users.delete(id)
+        }
+    }
+
     // midi system
     let midi = {
         initialized: false,
@@ -600,23 +673,23 @@ $(function() {
                 if (!gClient.isConnected()) return
                 if (!(gHyperMod.lsSettings.showUsersWhenTyping ?? true)) return
                 if ((e.target as HTMLInputElement).value.length == 0) {
-                    stopTyping()
-                    if (gTypingTimeout) {
-                        scheduler.clearTimeout(gTypingTimeout)
-                        gTypingTimeout = undefined
+                    typing.stopTyping()
+                    if (typing.timeout) {
+                        scheduler.clearTimeout(typing.timeout)
+                        typing.timeout = undefined
                     }
-                    return updateTypingStatus()
+                    return typing.updateStatus()
                 }
-                if (!gTypingTimeout) {
-                    startTyping()
-                    updateTypingStatus()
-                    gTypingTimeout = scheduler.setTimeout(() => {
-                        stopTyping()
-                        updateTypingStatus()
-                        gTypingTimeout = undefined
+                if (!typing.timeout) {
+                    typing.startTyping()
+                    typing.updateStatus()
+                    typing.timeout = scheduler.setTimeout(() => {
+                        typing.stopTyping()
+                        typing.updateStatus()
+                        typing.timeout = undefined
                     }, 2000)
                 } else {
-                    scheduler.rescheduleTimeout(gTypingTimeout, 2000)
+                    scheduler.rescheduleTimeout(typing.timeout, 2000)
                 }
             })
             $('#chat-input').on('keydown', e => {
@@ -683,8 +756,8 @@ $(function() {
                             chat.inputHistory.push(message)
                             chat.inputHistoryIndex = chat.inputHistory.length
                             $(e.target).val('')
-                            stopTyping()
-                            updateTypingStatus()
+                            typing.stopTyping()
+                            typing.updateStatus()
                             if (gHyperMod.lsSettings.messageBlur ?? true)
                                 scheduler.setTimeout(function () {
                                     chat.blur()
@@ -1082,6 +1155,7 @@ $(function() {
     scheduler.init()
     background.init()
     tsparticles.init()
+    typing.init()
     midi.init()
     chat.init()
     
@@ -3875,71 +3949,6 @@ $(function() {
         })
     })()
 
-    // chatctor
-
-    ////////////////////////////////////////////////////////////////
-    let gTypingTimeout
-    let typingUsers = new Set()
-    function listFormat(list) {
-        if (!Array.isArray(list) && typeof list[Symbol.iterator] === 'function') {
-            list = Array.from(list)
-        }
-        if (list.length == 0) return ''
-        else if (list.length == 1) return list[0]
-        else if (list.length == 2) return list[0] + ' and ' + list[1]
-        else return list.slice(0, -1).join(', ') + ', and ' + list[list.length - 1]
-    }
-    function updateTypingStatus() {
-        let element = $('#typing-container.hypermod')
-        if (typingUsers.size == 0) {
-            element.hide()
-        } else {
-            element.show()
-            let text = listFormat(Array.from(typingUsers.values()).map(id => `<span style='color: ${gClient.findParticipantById(id).color};'>${gClient.findParticipantById(id).name}</span>`))
-            element.html(typingUsers.size == 1 ? text + ' is typing...' : text + ' are typing...')
-        }
-    }
-    function startTyping() {
-        gClient.sendArray([{ 
-            m: 'custom',
-            target: {
-                mode: 'subscribed'
-            },
-            data: {
-                m: 'hypermod',
-                type: 'typing'
-            }
-        }])
-        //typingUsers.add(gClient.participantId) // debugging
-    }
-    function stopTyping() {
-        gClient.sendArray([{ 
-            m: 'custom',
-            target: {
-                mode: 'subscribed'
-            },
-            data: {
-                m: 'hypermod',
-                type: 'typing',
-                stop: true
-            }
-        }])
-        //typingUsers.delete(gClient.participantId) // debugging
-    }
-    gClient.on('custom', msg => {
-        if (msg.data.m === 'hypermod') {
-            switch (msg.data.type) {
-                case 'typing':
-                    if (msg.data.stop) {
-                        typingUsers.delete(msg.p)
-                    } else {
-                        typingUsers.add(msg.p)
-                    }
-                    updateTypingStatus()
-                    break
-            }
-        }
-    });
     // MIDI
 
     ////////////////////////////////////////////////////////////////
@@ -3977,11 +3986,7 @@ $(function() {
             participantChannel[keys[i]] = i & 0xf
     }
     gClient.on('participant added', rebuildParticipantChannels)
-    gClient.on('participant removed', e => {
-        rebuildParticipantChannels()
-        typingUsers.delete(e._id)
-        updateTypingStatus()
-    })
+    gClient.on('participant removed', e => rebuildParticipantChannels)
     rebuildParticipantChannels();
     /*
     function showConnections(sticky) {
@@ -4177,13 +4182,13 @@ $(function() {
         background,
         scheduler,
         modal,
+        chat,
+        typing,
         addons: {
             hyperMod: gHyperMod
         },
         piano: gPiano,
         client: gClient,
-        chat,
-        typingUsers,
         noteQuota: gNoteQuota,
         normalNoteQuotaParams,
         soundSelector: gSoundSelector,
