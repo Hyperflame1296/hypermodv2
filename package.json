@@ -2,7 +2,7 @@
     "type": "module",
     "scripts": {
         "clean": "npx rimraf dist/",
-        "copy-files": "npx copyfiles -u 1 src/**/*.htm src/**/*.css src/**/*.js src/**/*.json src/*.htm src/*.css src/*.js src/*.json dist/",
+        "copy-files": "npx copyfiles -u 1 src/**/**/**/*.htm src/**/**/**/*.css src/**/**/**/*.js src/**/**/**/*.json src/**/**/*.htm src/**/**/*.css src/**/**/*.js src/**/**/*.json src/**/*.htm src/**/*.css src/**/*.js src/**/*.json src/*.htm src/*.css src/*.js src/*.json dist/",
         "build": "npm run clean && npm run copy-files && tsc"
     },
     "dependencies": {
