@@ -1,9 +1,9 @@
 # HyperModV2
 - the new HyperMod!
 
-to build it, run `npm install`  
-then, run the `build.sh` (linux) / `build.cmd` (windows) file  
-now, you can just do `node index` and it open HyperModV2 at [localhost:8080](http://localhost:8080/)!
+to install the required dependencies, run `npm install`  
+then, run the `build.sh` (linux) / `build.cmd` (windows) file to build HyperMod.
+now, you can just do `node index` and it opens HyperModV2 at [localhost:8080](http://localhost:8080/)!
 
 ## Features
 - a faster piano
