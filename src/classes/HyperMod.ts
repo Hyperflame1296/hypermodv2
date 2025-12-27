@@ -14,7 +14,7 @@ export class HyperMod {
     player: Player = new Player
     npsTracker: NPSTracker = new NPSTracker
     currentFile: string
-    version: string = 'v0.2.0.84'
+    version: string = 'v0.2.0.85'
     defaultSettings = {
         // MPP section
         forceInfNoteQuota: true,
@@ -299,6 +299,8 @@ export class HyperMod {
         this.updateFileList()
         this.messageLoop = setInterval(() => {
             if (typeof MPP === 'undefined')
+                return
+            if (!MPP.client.isConnected())
                 return
             if (
                 this.lsSettings.autoCrown && 
@@ -727,8 +729,7 @@ export class HyperMod {
         // add hypermod hotkey
         $(window).on('keydown', e => {
             switch (e.code) {
-                case 'KeyH':
-                    let div = $('.hypermod#main-menu, .hypermod#tabs')
+                case 'Tab':
                     if ($('.chatting').length != 0)
                         return
                     this.toggleMenu()
