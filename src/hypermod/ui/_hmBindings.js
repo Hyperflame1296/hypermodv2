@@ -28,6 +28,7 @@ export default (function(hyperMod) {
                     } else {
                         MPP.noteQuota.setParams(MPP.normalNoteQuotaParams)
                     }
+                    MPP.addons.draw.enabled = hyperMod.lsSettings.enableDrawing
                     MPP.client.uri = hyperMod.lsSettings.connectUrl
                 }
                 for (let setting in hyperMod.lsSettings.customization) {

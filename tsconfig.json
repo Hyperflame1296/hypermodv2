@@ -4,9 +4,10 @@
         "allowJs": true,
         "rootDir": "./src",
         "outDir": "./dist",
-        "module": "esnext",
+        "module": "nodenext",
         "target": "es2024",
-        "moduleResolution": "classic",
+        "moduleResolution": "nodenext",
+        "moduleDetection": "legacy",
         "esModuleInterop": true
     }
 }

@@ -5,7 +5,16 @@
 		<script src='./modules/tsparticles.preset.snow.bundle.min.js'></script>
 		<script src='./modules/i18nextify.min.js'></script>
 		<script src='./modules/jquery.min.js'></script>
-		
+
+		<!-- importmap -->
+		<script type='importmap'>
+			{
+				"imports": {
+					"denque": "https://cdn.jsdelivr.net/npm/denque@2.1.0/+esm"
+				}
+			}
+		</script>
+
 		<!-- scripts -->
 		<script type='module' src='release.js'></script>
 		<script type='module' src='script.js'></script>

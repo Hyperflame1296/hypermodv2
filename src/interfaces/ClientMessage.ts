@@ -1,6 +1,6 @@
 // import: local interfaces
-import { ParticipantInfo } from './ParticipantInfo'
-import { Tag } from './Tag'
+import { ParticipantInfo } from './ParticipantInfo.js'
+import { Tag } from './Tag.js'
 
 export interface ClientMessage {
     'participant added': {

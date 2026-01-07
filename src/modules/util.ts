@@ -4,6 +4,29 @@ export const util = {
             return Math.round((number - offset) / increment) * increment + offset
         }
     },
+    byte: {
+        stringToBytes(str) {
+			var ch,
+				st,
+				re = [],
+				j = 0
+			for (var i = 0; i < str.length; i++) {
+				ch = str.charCodeAt(i)
+				if (ch < 127) {
+					re[j++] = ch & 0xff
+				} else {
+					st = []
+					do {
+						st.push(ch & 0xff)
+						ch = ch >> 8
+					} while (ch)
+					st = st.reverse()
+					for (var k = 0; k < st.length; ++k) re[j++] = st[k]
+				}
+			}
+			return re
+		}
+    },
     lang: {
         listFormat: (list: string[]) => {
             if (!Array.isArray(list) && typeof list[Symbol.iterator] === 'function') {
@@ -13,6 +36,44 @@ export const util = {
             else if (list.length == 1) return list[0]
             else if (list.length == 2) return list[0] + ' and ' + list[1]
             else return list.slice(0, -1).join(', ') + ', and ' + list[list.length - 1]
+        }
+    },
+    json: {
+        validate(json: string) {
+            try {
+                JSON.parse(json)
+                return true
+            } catch (_) {
+                return false
+            }
+        },
+        charCompress(char: string) {
+            let y = char.charCodeAt(0)
+            switch (char) {
+                case '\b':
+                    return '\\b'
+                case '\t':
+                    return '\\t'
+                case '\n':
+                    return '\\n'
+                case '\v':
+                    return '\\u0000'
+                case '\f':
+                    return '\\f'
+                case '\"':
+                    return '\\"'
+                case '\r':
+                    return '\\r'
+                case '\\':
+                    return '\\\\'
+                case '\'':
+                    return '\''
+                default:
+                    if (y <= 0x1f || (y >= 0x7f && y <= 0x9f))
+                        return '\\u' + y.toString().padStart(4, '0')
+                    else
+                        return char
+            }
         }
     },
     html: {

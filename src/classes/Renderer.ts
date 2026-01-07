@@ -1,10 +1,13 @@
 export class Renderer {
+    piano: any
+    width: number
+    height: number
     init(piano) {
         this.piano = piano
         this.resize()
         return this
     }
-    resize(width, height) {
+    resize(width?: number, height?: number) {
         if (typeof width == 'undefined') width = $(this.piano.rootElement).width()
         if (typeof height == 'undefined') height = Math.floor(width * 0.2)
         $(this.piano.rootElement).css({

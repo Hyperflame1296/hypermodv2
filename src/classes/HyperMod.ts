@@ -2,6 +2,9 @@
 import { Player } from './Player.js'
 import { NPSTracker } from './NPSTracker.js'
 
+// import: local modules
+import { util } from '../modules/util.js'
+
 // code
 declare let MPP: any
 export class HyperMod {
@@ -14,7 +17,7 @@ export class HyperMod {
     player: Player = new Player
     npsTracker: NPSTracker = new NPSTracker
     currentFile: string
-    version: string = 'v0.2.0.85'
+    version: string = 'v0.2.0.86'
     defaultSettings = {
         // MPP section
         forceInfNoteQuota: true,
@@ -47,6 +50,7 @@ export class HyperMod {
         // Visuals section
         removeHyperModText: false,
         removeRainbowGraphics: false,
+        enableDrawing: false,
         canvasUiOpacity: 1,
         enableFpsGraph: true,
         fpsCalculationInterval: 125,
@@ -65,21 +69,21 @@ export class HyperMod {
     lsSettings = structuredClone(this.defaultSettings)
     channelColors = [
         '#ff0000',
-        '#ff8800',
-        '#ffff00',
-        '#88ff00',
-        '#00ff00',
-        '#00ff44',
-        '#00ff88',
-        '#00ffbb',
+        '#ff6000',
+        '#ffbf00',
+        '#dfff00',
+        '#80ff00',
+        '#20ff00',
+        '#00ff40',
+        '#00ff9f',
         '#00ffff',
-        '#0088ff',
-        '#0000ff',
-        '#8800ff',
-        '#ff00ff',
-        '#ff00bb',
-        '#ff0088',
-        '#ff0044',
+        '#009fff',
+        '#0040ff',
+        '#2000ff',
+        '#8000ff',
+        '#df00ff',
+        '#ff00bf',
+        '#ff0060'
     ]
     canvas: HTMLCanvasElement = document.createElement('canvas')
     ctx: CanvasRenderingContext2D = this.canvas?.getContext('2d')
@@ -643,8 +647,10 @@ export class HyperMod {
                 try {
                     for (let file of e.target.files) {
                         if (!file) continue;
-                        this.fileData.set(file.name,  await file.arrayBuffer())
+                        this.fileData.set(file.name, await file.arrayBuffer())
                     }
+                    input.remove()
+                    resolve(true)
                     this.updateFileList()
                 } catch (err) {
                     reject(err)
@@ -652,9 +658,36 @@ export class HyperMod {
                 this.hasFileDialogOpen = false
             })
             input.click();
-            input.remove()
-            resolve(true)
         });
+    }
+    async openAttatchmentDialog() {
+        return new Promise((resolve, reject) => {
+            let input = document.createElement('input');
+            input.type = 'file'
+            this.hasFileDialogOpen = true
+            $(input).on('change', async e => {
+                try {
+                    for (let file of e.target.files) {
+                        if (!file) continue;
+                        this.sendAttatchment(file.name, new Uint8Array(await file.arrayBuffer()))
+                    }
+                    input.remove()
+                    resolve(true)
+                    this.updateFileList()
+                } catch (err) {
+                    reject(err)
+                }
+                this.hasFileDialogOpen = false
+            })
+            input.click();
+        });
+    }
+    sendAttatchment(fn: string, data: Uint8Array) {
+        if (typeof MPP === 'undefined')
+            return
+        let str = Array.from(data).map(y => util.json.charCompress(String.fromCharCode(y))).join('')
+        let json = `[{"m":"custom","target":{"mode":"subscribed"},"data":{"m":"hypermod","type":"attachment","file":{"name":"test.pcm","data":"${str}"}}}]`;
+        MPP.client.send(json)
     }
     toggleMenu() {
         let div = $('.hypermod#main-menu, .hypermod#tabs')
