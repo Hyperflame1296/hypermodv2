@@ -5,6 +5,9 @@ import { NPSTracker } from './NPSTracker.js'
 // import: local modules
 import { util } from '../modules/util.js'
 
+// import: classes
+import Denque from 'denque'
+
 // code
 declare let MPP: any
 export class HyperMod {
@@ -17,7 +20,7 @@ export class HyperMod {
     player: Player = new Player
     npsTracker: NPSTracker = new NPSTracker
     currentFile: string
-    version: string = 'v0.2.0.86'
+    version: string = 'v0.2.0-beta.87'
     defaultSettings = {
         // MPP section
         forceInfNoteQuota: true,
@@ -278,19 +281,34 @@ export class HyperMod {
         }
     ]
     visualizer = {
-        visibleNotes: [],
+        visibleNotes: new Denque(),
+        activeNotes: new Map(),
         noteOn(note, participant, t = Date.now()) {
-            this.visibleNotes.push({
+            let obj = {
                 n: note,
                 c: participant?.color ?? '#777777',
                 t: performance.now() * 0.001
-            })
+            }
+            this.visibleNotes.push(obj)
+
+            let stack = this.activeNotes.get(note)
+            if (!stack)
+                stack = []
+            stack.push(obj)
         },
         noteOff(note, t = Date.now()) {
-            let n = this.visibleNotes.findLast(n => n.n === note && n.l === undefined)
-            if (!n)
+            let stack = this.activeNotes.get(note)
+            if (!stack || stack.length === 0)
                 return
-            n.l = (performance.now() * 0.001) - n.t
+
+            let now = performance.now() * 0.001
+            let obj = stack.pop()
+
+            obj.l = now - obj.t
+
+            if (stack.length === 0) {
+                this.activeNotes.delete(note)
+            }
         }
     }
     constructor() {
@@ -445,10 +463,10 @@ export class HyperMod {
         this.ctx.strokeStyle = '#fff'
         if (!(this.lsSettings.removeHyperModText ?? false)) {
             this.ctx.textAlign = 'center'
-            this.ctx.fillText('HyperMod v2', this.canvas.width / 2, 130)
+            this.ctx.fillText('HyperMod v2', this.canvas.width / 2, 130 - (this.hasMenuOpen ? 60 : 0))
             this.ctx.fillStyle = '#ffffff6b'
             this.ctx.font = 'italic 20px monospace'
-            this.ctx.fillText(`(${this.version})`, this.canvas.width / 2, 160)
+            this.ctx.fillText(`(${this.version})`, this.canvas.width / 2, 160 - (this.hasMenuOpen ? 60 : 0))
             this.ctx.font = '30px monospace'
             this.ctx.fillStyle = !(this.lsSettings.removeRainbowGraphics ?? false) ? this.hsvHex : '#fff'
         }
@@ -485,7 +503,7 @@ export class HyperMod {
             this.ctx.rect(sx, sy, w, h)
             this.ctx.clip()
             for (let i = this.visualizer.visibleNotes.length - 1; i >= 0; i--) {
-                let note = this.visualizer.visibleNotes[i]
+                let note = this.visualizer.visibleNotes.get(i)
                 let x = sx + w - ((t - note.t) * this.lsSettings.noteVisualizerInterval)
                 let nh = h / 88
                 let y = sy + (88 - note.n) * nh
@@ -493,7 +511,7 @@ export class HyperMod {
                     note.l = 3
                 let nw = (note.l ?? (t - note.t)) * this.lsSettings.noteVisualizerInterval
                 if (x + nw < sx) {
-                    this.visualizer.visibleNotes.splice(i, 1)
+                    this.visualizer.visibleNotes.pop()
                     continue
                 }
                 if (note.c !== lastCol) {
@@ -637,6 +655,19 @@ export class HyperMod {
             list.append(li)
         }
     }
+    addFileToList(file: File, updateList: boolean = true) {
+        if (!file) return
+        file.arrayBuffer().then(data => {
+            this.fileData.set(file.name, data)
+            if (updateList)
+                this.updateFileList()
+        })
+    }
+    addFilesToList(files: FileList, updateList: boolean = true) {
+        for (let file of files) {
+            this.addFileToList(file)
+        }
+    }
     async openMIDIDialog() {
         return new Promise((resolve, reject) => {
             let input = document.createElement('input');
@@ -645,13 +676,9 @@ export class HyperMod {
             this.hasFileDialogOpen = true
             $(input).on('change', async e => {
                 try {
-                    for (let file of e.target.files) {
-                        if (!file) continue;
-                        this.fileData.set(file.name, await file.arrayBuffer())
-                    }
+                    this.addFilesToList(e.target.files, true)
                     input.remove()
                     resolve(true)
-                    this.updateFileList()
                 } catch (err) {
                     reject(err)
                 }
@@ -717,6 +744,18 @@ export class HyperMod {
                     this.hasMenuOpen = true
                 }
         })
+        // show menu background blur
+        if (this.hasMenuOpen) {
+            $('div#hypermod-container.hypermod').css({
+                'background': 'rgba(0, 0, 0, 0.5)',
+                'backdrop-filter': 'blur(3px)'
+            })
+        } else if (!this.hasMenuOpen) {
+            $('div#hypermod-container.hypermod').css({
+                'background': 'unset',
+                'backdrop-filter': 'unset'
+            })
+        }
     }
     async loadUI() {
         let html = ''

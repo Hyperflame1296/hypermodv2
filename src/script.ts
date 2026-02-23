@@ -1218,6 +1218,9 @@ $(function() {
                             }
                         })
                     }
+                    for (let output of midi.outputs) {
+                        output.port.send([0xff])
+                    }
                     document.getElementById('midi-btn').addEventListener('click', function (evt) {
                         if (!document.getElementById('Notification-MIDI-Connections')) midi.showConnections(true)
                         else {
@@ -1377,9 +1380,27 @@ $(function() {
             gClient.on('a', msg => {
                 this.receive(msg)
                 gHyperMod.receiveMessage(msg)
+                if (!tabIsActive && msg.a.includes(`@${gClient.participantId}`)) {
+                    if ((gHyperMod.lsSettings.sendNotifications ?? true) && Notification.permission === 'granted') {
+                        new Notification(globalThis.i18nextify.i18next.t('You were mentioned!'), {
+                            body: `${msg.p.name} has mentioned you in chat.`,
+                        })
+                        youreMentioned = true
+                        document.title = globalThis.i18nextify.i18next.t('You were mentioned!')
+                    }
+                }
             })
             gClient.on('dm', msg => {
                 this.receive(msg)
+                if (!tabIsActive && msg.a.includes(`@${gClient.participantId}`)) {
+                    if ((gHyperMod.lsSettings.sendNotifications ?? true) && Notification.permission === 'granted') {
+                        new Notification(globalThis.i18nextify.i18next.t('You were mentioned!'), {
+                            body: `${msg.sender.name} has mentioned you in chat.`,
+                        })
+                        youreMentioned = true
+                        document.title = globalThis.i18nextify.i18next.t('You were mentioned!')
+                    }
+                }
             })
 
             $('#chat-input').on('focus', () => {
@@ -1756,14 +1777,6 @@ $(function() {
                 if (user) {
                     let nick = util.html.parseContent(user.name)
                     if (user.id === gClient.getOwnParticipant().id) {
-                        if (!tabIsActive) {
-                            youreMentioned = true
-                            document.title = globalThis.i18nextify.i18next.t('You were mentioned!')
-                            if ((gHyperMod.lsSettings.sendNotifications ?? true) && Notification.permission === 'granted')
-                                new Notification(globalThis.i18nextify.i18next.t('You were mentioned!'), {
-                                    body: `${msg.m === 'dm' ? msg.sender.name : msg.p.name} has mentioned you in chat.`,
-                                })
-                        }
                         return `<span class="mention" style="background-color: ${user.color};">${nick}</span>`
                     } else return `@${nick}`
                 } else return match

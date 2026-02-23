@@ -6,10 +6,11 @@ export class Scheduler {
     initialized: boolean = false
     tasks: (() => void)[] = []
     timeouts: SchedulerTimeout[] = []
+    timeoutMap: Map<number, SchedulerTimeout> = new Map()
     #timeoutId: number = 0
     init() {
         if (this.initialized)
-            return console.warn('MPP.scheduler.init() called more than once!')
+            return console.warn('Scheduler.init() called more than once!')
         this.initialized = true
         let loop = () => {
             this.update()
@@ -20,17 +21,19 @@ export class Scheduler {
     update() {
         if (!this.initialized)
             return
+        let now = performance.now()
         for (let i = this.timeouts.length - 1; i >= 0; i--) {
             let timeout = this.timeouts[i]
-            if (typeof timeout === 'undefined')
+            if (timeout === undefined)
                 continue
-            if (performance.now() < timeout.time)
+            if (now < timeout.time)
                 continue
             timeout.cb()
             this.timeouts.splice(i, 1)
+            this.timeoutMap.delete(timeout.id)
         }
-        for (let task of this.tasks) {
-            task()
+        for (let i = 0; i < this.tasks.length; i++) {
+            this.tasks[i]()
         }
     }
     post(cb: () => void) {
@@ -52,17 +55,19 @@ export class Scheduler {
             cb()
             return ++this.#timeoutId
         }
-        this.timeouts.push({
+        let timeout = {
             cb,
             time: performance.now() + delay,
             id: ++this.#timeoutId
-        })
+        }
+        this.timeouts.push(timeout)
+        this.timeoutMap.set(timeout.id, timeout)
         return this.#timeoutId
     }
     rescheduleTimeout(id: number, delay: number = 0) {
         if (!this.initialized)
             return false
-        let timeout = this.timeouts.find(t => t.id === id)
+        let timeout = this.timeoutMap.get(id)
         if (!timeout)
             return false
         timeout.time = performance.now() + Math.max(delay, 0)
@@ -71,7 +76,10 @@ export class Scheduler {
     clearTimeout(id: number) {
         if (!this.initialized)
             return false
-        this.timeouts.splice(this.timeouts.findIndex(t => t.id === id), 1)
+        let timeoutIndex = this.timeouts.findIndex(t => t.id === id)
+        let timeout = this.timeouts[timeoutIndex]
+        this.timeouts.splice(timeoutIndex, 1)
+        this.timeoutMap.delete(timeout.id)
         return true
     }
 }

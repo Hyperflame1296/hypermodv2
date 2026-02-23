@@ -1,0 +1,9 @@
+revamp the settings menu
+- revamp how the menu looks
+- add a dropdown menu to switch between audio engines
+
+revamp the HMAudioEngine
+- make it send over notes to a processor node, to play them all at once in one buffer
+
+add an Echo feature
+- it allows for cool echo effects, that can be toggled server/client-side

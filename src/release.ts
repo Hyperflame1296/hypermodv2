@@ -8,6 +8,7 @@ import { BinaryTranslator } from './classes/BinaryTranslator.js'
 import { BinaryWriter } from './classes/BinaryWriter.js'
 import { Client } from './classes/Client.js'
 import { Color } from './classes/Color.js'
+import { Draw } from './classes/Draw.js'
 import { EventEmitter } from './classes/EventEmitter.js'
 import { HyperMod } from './classes/HyperMod.js'
 import { KeyboardNote } from './classes/KeyboardNote.js'
@@ -19,6 +20,9 @@ import { Rect } from './classes/Rect.js'
 import { Renderer } from './classes/Renderer.js'
 import { Scheduler } from './classes/Scheduler.js'
 
+// import: classes
+import Denque from 'denque'
+
 Object.assign(globalThis, {
     AudioEngine,
     BinaryReader,
@@ -26,6 +30,7 @@ Object.assign(globalThis, {
     BinaryWriter,
     Client,
     Color,
+    Draw,
     EventEmitter,
     HyperMod,
     KeyboardNote,
@@ -35,5 +40,7 @@ Object.assign(globalThis, {
     Player,
     Rect,
     Renderer,
-    Scheduler
+    Scheduler,
+
+    Denque
 })

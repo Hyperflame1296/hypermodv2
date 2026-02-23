@@ -92,10 +92,8 @@ export default (function(hyperMod) {
             }
         },
         '.hypermod.hm-button#add-midi-button': {
-            click: async e => {
-                if (hyperMod.hasFileDialogOpen)
-                    return
-                await hyperMod.openMIDIDialog()
+            click: () => {
+                hyperMod.openMIDIDialog()
             }
         },
         'input.hypermod': {
