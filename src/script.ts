@@ -2249,6 +2249,8 @@ $(function() {
         blackBlipX: number
         whiteKeyRender: HTMLCanvasElement
         blackKeyRender: HTMLCanvasElement
+        whiteKeyBlipCount: number
+        blackKeyBlipCount: number
         shadowRender: HTMLCanvasElement[]
         noteLyrics: any
         constructor() {
@@ -2349,6 +2351,9 @@ $(function() {
             this.blackBlipHeight = Math.floor(this.blackBlipWidth * 0.8)
             this.blackBlipY = Math.floor(this.blackKeyHeight - this.blackBlipHeight * 1.2)
             this.blackBlipX = Math.floor((this.blackKeyWidth - this.blackBlipWidth) / 2)
+
+            this.whiteKeyBlipCount = Math.round(this.whiteKeyHeight / (this.whiteBlipHeight * 1.1))
+            this.blackKeyBlipCount = Math.round(this.blackKeyHeight / (this.blackBlipHeight * 1.1))
 
             // prerender white key
             this.whiteKeyRender = document.createElement('canvas')
@@ -2840,7 +2845,7 @@ $(function() {
             if (gHyperMod.lsSettings.trackNPS ?? false) gHyperMod.npsTracker.noteOn();
             if (!this.keys.hasOwnProperty(note) || !participant) return;
             const key = this.keys[note];
-            const limit = 17;
+            const limit = gHyperMod.lsSettings.blipLimit ?? 17;
 
             // --- Visual circular buffer ---
             if (!(key as any)._blipBuffer) {
@@ -2932,10 +2937,21 @@ $(function() {
             midi.noteOn(key.note, vol * 100, delay_ms, participant.id)
             scheduler.setTimeout(() => {
                 // spawn a blip
-                let limit = gHyperMod.lsSettings.blipLimit ?? 8
                 key.timePlayed = Date.now()
-                if ((gHyperMod.lsSettings.enableBlipLimit ?? true) && key.blips.length >= limit)
-                    key.blips.shift()
+                if ((gHyperMod.lsSettings.enableBlipLimit ?? true)) {
+                    if ((gHyperMod.lsSettings.keyWiseBlipLimit ?? true)) {
+                        let limitWhite = this.renderer.whiteKeyBlipCount
+                        let limitBlack = this.renderer.blackKeyBlipCount
+                        if (!key.sharp && key.blips.length >= limitWhite)
+                            key.blips.shift()
+                        if ( key.sharp && key.blips.length >= limitBlack)
+                            key.blips.shift()
+                    } else {
+                        let limit = gHyperMod.lsSettings.blipLimit ?? 8
+                        if (key.blips.length >= limit)
+                            key.blips.shift()
+                    }
+                }
                 key.blips.push({ time: key.timePlayed, color: participant.color })
                 if (gHyperMod.lsSettings.enableNoteVisualizer ?? false) scheduler.setTimeout(() => gHyperMod.visualizer.noteOn(MIDI_KEY_MAP[note] ?? 0, participant), delay_ms)
                 // bounce player's name, if enabled

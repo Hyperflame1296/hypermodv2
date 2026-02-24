@@ -7,6 +7,7 @@ import { util } from '../modules/util.js'
 
 // import: classes
 import Denque from 'denque'
+import { ParticipantInfo } from '../interfaces/ParticipantInfo.js'
 
 // code
 declare let MPP: any
@@ -20,7 +21,7 @@ export class HyperMod {
     player: Player = new Player
     npsTracker: NPSTracker = new NPSTracker
     currentFile: string
-    version: string = 'v0.2.0-beta.87'
+    version: string = 'v0.2.0-beta.88'
     defaultSettings = {
         // MPP section
         forceInfNoteQuota: true,
@@ -49,6 +50,7 @@ export class HyperMod {
         removeKeyFade: true,
         enableBufferedBlips: false,
         enableBlipLimit: true,
+        keyWiseBlipLimit: true,
         blipLimit: 8,
         // Visuals section
         removeHyperModText: false,
@@ -283,7 +285,7 @@ export class HyperMod {
     visualizer = {
         visibleNotes: new Denque(),
         activeNotes: new Map(),
-        noteOn(note, participant, t = Date.now()) {
+        noteOn(note: number, participant: ParticipantInfo) {
             let obj = {
                 n: note,
                 c: participant?.color ?? '#777777',
@@ -292,12 +294,14 @@ export class HyperMod {
             this.visibleNotes.push(obj)
 
             let stack = this.activeNotes.get(note)
-            if (!stack)
+            if (!stack) {
                 stack = []
+                this.activeNotes.set(note, stack)
+            }
             stack.push(obj)
         },
-        noteOff(note, t = Date.now()) {
-            let stack = this.activeNotes.get(note)
+        noteOff(note: number) {
+            let stack: any[] = this.activeNotes.get(note)
             if (!stack || stack.length === 0)
                 return
 
@@ -305,10 +309,6 @@ export class HyperMod {
             let obj = stack.pop()
 
             obj.l = now - obj.t
-
-            if (stack.length === 0) {
-                this.activeNotes.delete(note)
-            }
         }
     }
     constructor() {
@@ -511,7 +511,7 @@ export class HyperMod {
                     note.l = 3
                 let nw = (note.l ?? (t - note.t)) * this.lsSettings.noteVisualizerInterval
                 if (x + nw < sx) {
-                    this.visualizer.visibleNotes.pop()
+                    this.visualizer.visibleNotes.splice(i, 1)
                     continue
                 }
                 if (note.c !== lastCol) {
